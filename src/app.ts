@@ -6,6 +6,7 @@ import itemRoutes from './routes/item.routes';
 import reviewRoutes from './routes/review.routes';
 import wishlistRoutes from './routes/wishlist.routes';
 import analyticsRoutes from './routes/analytics.routes';
+import homeRoutes from './routes/home.routes';
 
 dotenv.config();
 
@@ -20,6 +21,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/home', homeRoutes);
 app.use('/api', reviewRoutes);
 
 app.get('/', (req: Request, res: Response) => {
