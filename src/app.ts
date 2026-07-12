@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.routes';
 import itemRoutes from './routes/item.routes';
 import reviewRoutes from './routes/review.routes';
 import wishlistRoutes from './routes/wishlist.routes';
+import analyticsRoutes from './routes/analytics.routes';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/analytics', analyticsRoutes);
 app.use('/api', reviewRoutes);
 
 app.get('/', (req: Request, res: Response) => {
