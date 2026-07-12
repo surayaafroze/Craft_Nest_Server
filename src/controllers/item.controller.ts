@@ -1,424 +1,227 @@
 import { Request, Response, NextFunction } from 'express';
-import { ObjectId } from 'mongodb';
-import { getDb } from '../config/db';
-import { getPaginationParams } from '../utils/pagination';
-import { verifyToken } from '../utils/jwt';
-import { ROLES } from '../constants/roles';
+import { ItemService } from '../services/item.service';
+import { ItemDocument } from '../types/item';
 import { AuthenticatedRequest } from '../middleware/auth';
 
-// Helper to optionally authenticate a request to inspect admin permissions in public routes
-const getOptionalUser = (req: Request) => {
+export const getItems = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    let token: string | null = null;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
-    }
-    if (!token && req.headers.cookie) {
-      const match = req.headers.cookie.match(/(?:^|;)\s*(?:better-auth\.session_token|token)\s*=\s*([^;]+)/);
-      if (match) {
-        token = match[1];
-      }
-    }
-    if (!token) return null;
-    return verifyToken(token);
-  } catch {
-    return null;
-  }
-};
+    const { 
+      search, 
+      category, 
+      minPrice, 
+      maxPrice, 
+      status, 
+      sortBy, 
+      sortOrder, 
+      page = '1', 
+      limit = '12' 
+    } = req.query;
 
-export const getItems = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    const { search, category, minPrice, maxPrice, status, sortBy, sortOrder } = req.query;
-    const { page, limit, skip } = getPaginationParams(req.query);
-    const db = getDb();
-    const itemsCollection = db.collection('items');
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
 
-    const queryObj: any = {};
+    const isAdmin = req.user?.role === 'admin';
 
-    // 1. Handle Role Gating on Item status
-    const optionalUser = getOptionalUser(req);
-    const isAdmin = optionalUser && optionalUser.role === ROLES.ADMIN;
+    const { items, total } = await ItemService.getItems({
+      search: search as string,
+      category: category as string,
+      minPrice: minPrice as string,
+      maxPrice: maxPrice as string,
+      status: status as string,
+      sortBy: sortBy as string,
+      sortOrder: sortOrder as string,
+      page: pageNum,
+      limit: limitNum,
+      skip,
+      isAdmin
+    });
 
-    if (isAdmin && status && typeof status === 'string') {
-      queryObj.status = status;
-    } else {
-      queryObj.status = 'approved';
-    }
-
-    // 2. Filters
-    if (category && typeof category === 'string') {
-      queryObj.category = category;
-    }
-
-    if (minPrice || maxPrice) {
-      queryObj.price = {};
-      if (minPrice) queryObj.price.$gte = Number(minPrice);
-      if (maxPrice) queryObj.price.$lte = Number(maxPrice);
-    }
-
-    // 3. Search (using text index)
-    if (search && typeof search === 'string') {
-      queryObj.$text = { $search: search };
-    }
-
-    // 4. Sorting
-    const sortObj: any = {};
-    if (sortBy && typeof sortBy === 'string') {
-      sortObj[sortBy] = sortOrder === 'desc' ? -1 : 1;
-    } else {
-      sortObj.createdAt = -1;
-    }
-
-    // Execute query
-    const items = await itemsCollection
-      .find(queryObj)
-      .sort(sortObj)
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-
-    const total = await itemsCollection.countDocuments(queryObj);
+    const totalPages = Math.ceil(total / limitNum);
 
     res.status(200).json({
-      items: items.map((item) => ({
-        id: item._id.toString(),
-        title: item.title,
-        shortDescription: item.shortDescription,
-        description: item.description,
-        category: item.category,
-        price: item.price,
-        imageUrls: item.imageUrls,
-        ownerId: item.ownerId.toString(),
-        status: item.status,
-        tags: item.tags,
-        quantity: item.quantity,
-        location: item.location,
-        avgRating: item.avgRating || 0,
-        reviewCount: item.reviewCount || 0,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      })),
+      items: items.map(mapItemResponse),
       pagination: {
-        page,
-        limit,
+        page: pageNum,
+        limit: limitNum,
         total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const getItemById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    const { id } = req.params;
-    if (!id || typeof id !== 'string') {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-    const db = getDb();
-    const itemsCollection = db.collection('items');
-
-    let objectId: ObjectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-
-    const item = await itemsCollection.findOne({ _id: objectId });
-    if (!item) {
-      res.status(404).json({ error: 'Item not found' });
-      return;
-    }
-
-    // Non-approved items can only be viewed by owner or admin
-    if (item.status !== 'approved') {
-      const optionalUser = getOptionalUser(req);
-      const isOwner = optionalUser && optionalUser.userId === item.ownerId.toString();
-      const isAdmin = optionalUser && optionalUser.role === ROLES.ADMIN;
-
-      if (!isOwner && !isAdmin) {
-        res.status(403).json({ error: 'Access forbidden' });
-        return;
+        totalPages,
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getItemById = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const currentUserId = req.user?.userId;
+    const isAdmin = req.user?.role === 'admin';
+
+    const item = await ItemService.getItemById(id, currentUserId, isAdmin);
+    
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
     }
+
+    res.status(200).json({ item: mapItemResponse(item) });
+  } catch (error: any) {
+    if (error.message === 'Access forbidden') {
+      return res.status(403).json({ error: 'Access forbidden: Item is not approved' });
+    }
+    next(error);
+  }
+};
+
+export const getRelatedItems = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    // We first need to get the item to know its category
+    const currentUserId = req.user?.userId;
+    const isAdmin = req.user?.role === 'admin';
+
+    const item = await ItemService.getItemById(id, currentUserId, isAdmin);
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+
+    const relatedItems = await ItemService.getRelatedItems(item.category, id);
 
     res.status(200).json({
-      item: {
-        id: item._id.toString(),
-        title: item.title,
-        shortDescription: item.shortDescription,
-        description: item.description,
-        category: item.category,
-        price: item.price,
-        imageUrls: item.imageUrls,
-        ownerId: item.ownerId.toString(),
-        status: item.status,
-        tags: item.tags,
-        quantity: item.quantity,
-        location: item.location,
-        avgRating: item.avgRating || 0,
-        reviewCount: item.reviewCount || 0,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      },
+      items: relatedItems.map(mapItemResponse)
     });
   } catch (error) {
     next(error);
   }
 };
 
-export const getRelatedItems = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const createItem = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-    if (!id || typeof id !== 'string') {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-    const db = getDb();
-    const itemsCollection = db.collection('items');
-
-    let objectId: ObjectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const currentItem = await itemsCollection.findOne({ _id: objectId });
-    if (!currentItem) {
-      res.status(404).json({ error: 'Item not found' });
-      return;
-    }
-
-    const relatedItems = await itemsCollection
-      .find({
-        category: currentItem.category,
-        _id: { $ne: currentItem._id },
-        status: 'approved',
-      })
-      .limit(4)
-      .toArray();
-
-    res.status(200).json({
-      items: relatedItems.map((item) => ({
-        id: item._id.toString(),
-        title: item.title,
-        shortDescription: item.shortDescription,
-        price: item.price,
-        imageUrls: item.imageUrls,
-        category: item.category,
-        ownerId: item.ownerId.toString(),
-      })),
-    });
+    const newItem = await ItemService.createItem(req.body, req.user.userId);
+    res.status(201).json({ message: 'Item created successfully', item: mapItemResponse(newItem as ItemDocument) });
   } catch (error) {
     next(error);
   }
 };
 
-export const createItem = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const updateItem = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!req.user) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
+    const id = req.params.id as string;
+    const currentUserId = req.user?.userId;
+    const isAdmin = req.user?.role === 'admin';
+
+    if (!currentUserId) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { title, shortDescription, description, category, price, imageUrls, tags } = req.body;
-    const db = getDb();
-    const itemsCollection = db.collection('items');
+    const item = await ItemService.getItemById(id, currentUserId, true);
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
 
-    const newItem = {
-      title,
-      shortDescription,
-      description,
-      category,
-      price,
-      imageUrls,
-      ownerId: new ObjectId(req.user.userId),
-      status: 'pending',
-      tags: tags || [],
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    if (item.ownerId.toString() !== currentUserId && !isAdmin) {
+      return res.status(403).json({ error: 'Access forbidden: You do not own this item' });
+    }
 
-    const result = await itemsCollection.insertOne(newItem);
-
-    res.status(201).json({
-      message: 'Item created successfully and is pending admin approval',
-      item: {
-        id: result.insertedId.toString(),
-        ...newItem,
-        ownerId: req.user.userId,
-      },
-    });
+    const updatedItem = await ItemService.updateItem(id, req.body);
+    res.status(200).json({ message: 'Item updated successfully', item: updatedItem ? mapItemResponse(updatedItem) : null });
   } catch (error) {
     next(error);
   }
 };
 
-export const updateItem = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const deleteItem = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-    if (!id || typeof id !== 'string') {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-    const updateData = req.body;
-    const db = getDb();
-    const itemsCollection = db.collection('items');
+    const id = req.params.id as string;
+    const currentUserId = req.user?.userId;
+    const isAdmin = req.user?.role === 'admin';
 
-    let objectId: ObjectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
+    if (!currentUserId) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Set updatedAt field
-    updateData.updatedAt = new Date();
-
-    await itemsCollection.updateOne({ _id: objectId }, { $set: updateData });
-
-    const updatedItem = await itemsCollection.findOne({ _id: objectId });
-
-    res.status(200).json({
-      message: 'Item updated successfully',
-      item: updatedItem ? {
-        id: updatedItem._id.toString(),
-        title: updatedItem.title,
-        shortDescription: updatedItem.shortDescription,
-        description: updatedItem.description,
-        category: updatedItem.category,
-        price: updatedItem.price,
-        imageUrls: updatedItem.imageUrls,
-        ownerId: updatedItem.ownerId.toString(),
-        status: updatedItem.status,
-        tags: updatedItem.tags,
-        createdAt: updatedItem.createdAt,
-        updatedAt: updatedItem.updatedAt,
-      } : null,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const deleteItem = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    const { id } = req.params;
-    if (!id || typeof id !== 'string') {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-    const db = getDb();
-    const itemsCollection = db.collection('items');
-
-    let objectId: ObjectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
+    const item = await ItemService.getItemById(id, currentUserId, true);
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
     }
 
-    await itemsCollection.deleteOne({ _id: objectId });
+    if (item.ownerId.toString() !== currentUserId && !isAdmin) {
+      return res.status(403).json({ error: 'Access forbidden: You do not own this item' });
+    }
 
+    await ItemService.deleteItem(id);
     res.status(200).json({ message: 'Item deleted successfully' });
   } catch (error) {
     next(error);
   }
 };
 
-export const getMyItems = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const getMyItems = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    if (!req.user) {
-      res.status(401).json({ error: 'Unauthorized' });
-      return;
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { page, limit, skip } = getPaginationParams(req.query);
-    const db = getDb();
-    const itemsCollection = db.collection('items');
+    const { page = '1', limit = '10' } = req.query;
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
 
-    const queryObj = { ownerId: new ObjectId(req.user.userId) };
-
-    const items = await itemsCollection
-      .find(queryObj)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-
-    const total = await itemsCollection.countDocuments(queryObj);
+    const { items, total } = await ItemService.getMyItems(req.user.userId, skip, limitNum);
+    const totalPages = Math.ceil(total / limitNum);
 
     res.status(200).json({
-      items: items.map((item) => ({
-        id: item._id.toString(),
-        title: item.title,
-        shortDescription: item.shortDescription,
-        description: item.description,
-        category: item.category,
-        price: item.price,
-        imageUrls: item.imageUrls,
-        ownerId: item.ownerId.toString(),
-        status: item.status,
-        tags: item.tags,
-        quantity: item.quantity,
-        location: item.location,
-        avgRating: item.avgRating || 0,
-        reviewCount: item.reviewCount || 0,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-      })),
+      items: items.map(mapItemResponse),
       pagination: {
-        page,
-        limit,
+        page: pageNum,
+        limit: limitNum,
         total,
-        totalPages: Math.ceil(total / limit),
-      },
+        totalPages,
+      }
     });
   } catch (error) {
     next(error);
   }
 };
 
-export const updateItemStatus = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+export const updateItemStatus = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
-    if (!id || typeof id !== 'string') {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
+    const id = req.params.id as string;
     const { status } = req.body;
-    const db = getDb();
-    const itemsCollection = db.collection('items');
 
-    let objectId: ObjectId;
-    try {
-      objectId = new ObjectId(id);
-    } catch {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
+    const success = await ItemService.updateItemStatus(id, status);
+    if (!success) {
+      return res.status(404).json({ error: 'Item not found' });
     }
 
-    const result = await itemsCollection.updateOne(
-      { _id: objectId },
-      { $set: { status, updatedAt: new Date() } }
-    );
-
-    if (result.matchedCount === 0) {
-      res.status(404).json({ error: 'Item not found' });
-      return;
-    }
-
-    res.status(200).json({ message: `Item status updated to ${status} successfully` });
+    res.status(200).json({ message: 'Item status updated successfully' });
   } catch (error) {
     next(error);
   }
 };
+
+// Helper function to map the MongoDB document to the response format (removes _id, returns id)
+function mapItemResponse(item: ItemDocument) {
+  return {
+    id: item._id.toString(),
+    ownerId: item.ownerId.toString(),
+    title: item.title,
+    shortDescription: item.shortDescription,
+    fullDescription: item.fullDescription,
+    price: item.price,
+    category: item.category,
+    images: item.images,
+    quantity: item.quantity,
+    location: item.location,
+    avgRating: item.avgRating || 0,
+    reviewCount: item.reviewCount || 0,
+    status: item.status,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
