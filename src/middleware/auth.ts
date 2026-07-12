@@ -17,22 +17,29 @@ export const requireAuth = async (
   try {
     let token: string | null = null;
 
-    // 1. Try reading from Authorization Header
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      token = authHeader.split(' ')[1];
+    // 1. Try reading from cookie directly (since we have cookie-parser)
+    if (req.cookies && req.cookies.backend_jwt) {
+      token = req.cookies.backend_jwt;
     }
 
-    // 2. Try reading from cookie header manually
+    // 2. Try reading from Authorization Header (useful for API testing e.g. Postman)
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.split(' ')[1];
+      }
+    }
+
+    // 3. Fallback regex manual cookie parsing just in case cookie-parser missed it
     if (!token && req.headers.cookie) {
-      const match = req.headers.cookie.match(/(?:^|;)\s*(?:better-auth\.session_token|token)\s*=\s*([^;]+)/);
+      const match = req.headers.cookie.match(/(?:^|;)\s*backend_jwt\s*=\s*([^;]+)/);
       if (match) {
         token = match[1];
       }
     }
 
     if (!token) {
-      res.status(401).json({ error: 'Access denied. No token provided.' });
+      res.status(401).json({ error: 'Access denied. No backend JWT token provided.' });
       return;
     }
 
