@@ -1,75 +1,16 @@
 import { Response, NextFunction } from 'express';
-import { ObjectId } from 'mongodb';
-import { getDb } from '../config/db';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { WishlistService } from '../services/wishlist.service';
 
 export const getWishlist = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
+    if (!req.user || !req.user.userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    const db = getDb();
-    const wishlistsCollection = db.collection('wishlists');
-    const userIdObj = new ObjectId(req.user.userId);
-
-    const wishlist = await wishlistsCollection
-      .aggregate([
-        { $match: { userId: userIdObj } },
-        {
-          $lookup: {
-            from: 'items',
-            localField: 'itemIds',
-            foreignField: '_id',
-            as: 'items',
-          },
-        },
-        {
-          $project: {
-            _id: 1,
-            userId: 1,
-            items: {
-              $map: {
-                input: '$items',
-                as: 'item',
-                in: {
-                  id: '$$item._id',
-                  title: '$$item.title',
-                  shortDescription: '$$item.shortDescription',
-                  price: '$$item.price',
-                  imageUrls: '$$item.imageUrls',
-                  category: '$$item.category',
-                  status: '$$item.status',
-                },
-              },
-            },
-          },
-        },
-      ])
-      .toArray();
-
-    if (wishlist.length === 0) {
-      res.status(200).json({
-        wishlist: {
-          userId: req.user.userId,
-          items: [],
-        },
-      });
-      return;
-    }
-
-    const w = wishlist[0];
-    res.status(200).json({
-      wishlist: {
-        id: w._id.toString(),
-        userId: w.userId.toString(),
-        items: w.items.map((item: any) => ({
-          ...item,
-          id: item.id.toString(),
-        })),
-      },
-    });
+    const wishlist = await WishlistService.getWishlist(req.user.userId);
+    res.status(200).json({ wishlist });
   } catch (error) {
     next(error);
   }
@@ -77,48 +18,25 @@ export const getWishlist = async (req: AuthenticatedRequest, res: Response, next
 
 export const addToWishlist = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
+    if (!req.user || !req.user.userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    const { itemId } = req.params;
-    if (!itemId || typeof itemId !== 'string') {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-
-    const db = getDb();
-    const itemsCollection = db.collection('items');
-    const wishlistsCollection = db.collection('wishlists');
-
-    let itemIdObj: ObjectId;
+    const itemId = req.params.itemId as string;
+    
     try {
-      itemIdObj = new ObjectId(itemId);
-    } catch {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
+      await WishlistService.addToWishlist(req.user.userId, itemId);
+      res.status(200).json({ message: 'Item added to wishlist successfully' });
+    } catch (err: any) {
+      if (err.message === 'Item not found') {
+        res.status(404).json({ error: 'Item not found' });
+      } else if (err.message === 'Only approved items can be added to wishlist') {
+        res.status(400).json({ error: err.message });
+      } else {
+        throw err;
+      }
     }
-
-    const item = await itemsCollection.findOne({ _id: itemIdObj });
-    if (!item) {
-      res.status(404).json({ error: 'Item not found' });
-      return;
-    }
-
-    const userIdObj = new ObjectId(req.user.userId);
-
-    await wishlistsCollection.updateOne(
-      { userId: userIdObj },
-      {
-        $addToSet: { itemIds: itemIdObj },
-        $setOnInsert: { createdAt: new Date() },
-        $set: { updatedAt: new Date() },
-      },
-      { upsert: true }
-    );
-
-    res.status(200).json({ message: 'Item added to wishlist successfully' });
   } catch (error) {
     next(error);
   }
@@ -126,38 +44,14 @@ export const addToWishlist = async (req: AuthenticatedRequest, res: Response, ne
 
 export const removeFromWishlist = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
+    if (!req.user || !req.user.userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
-    const { itemId } = req.params;
-    if (!itemId || typeof itemId !== 'string') {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-
-    const db = getDb();
-    const wishlistsCollection = db.collection('wishlists');
-
-    let itemIdObj: ObjectId;
-    try {
-      itemIdObj = new ObjectId(itemId);
-    } catch {
-      res.status(400).json({ error: 'Invalid item ID format' });
-      return;
-    }
-
-    const userIdObj = new ObjectId(req.user.userId);
-
-    await wishlistsCollection.updateOne(
-      { userId: userIdObj },
-      {
-        $pull: { itemIds: itemIdObj },
-        $set: { updatedAt: new Date() },
-      } as any
-    );
-
+    const itemId = req.params.itemId as string;
+    
+    await WishlistService.removeFromWishlist(req.user.userId, itemId);
     res.status(200).json({ message: 'Item removed from wishlist successfully' });
   } catch (error) {
     next(error);
