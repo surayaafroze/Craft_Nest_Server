@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { getWishlist, addToWishlist, removeFromWishlist } from '../controllers/wishlist.controller';
 import { requireAuth } from '../middleware/auth';
+import { validate } from '../middleware/validate';
+import { itemIdSchema } from '../validators/wishlist.validator';
 
 const router = Router();
 
@@ -8,9 +10,9 @@ const router = Router();
 router.get('/', requireAuth, getWishlist as any);
 
 // Add an item to user's wishlist
-router.post('/:itemId', requireAuth, addToWishlist as any);
+router.post('/:itemId', requireAuth, validate(itemIdSchema), addToWishlist as any);
 
 // Remove an item from user's wishlist
-router.delete('/:itemId', requireAuth, removeFromWishlist as any);
+router.delete('/:itemId', requireAuth, validate(itemIdSchema), removeFromWishlist as any);
 
 export default router;
