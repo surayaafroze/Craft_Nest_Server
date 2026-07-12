@@ -14,13 +14,27 @@ export const authMiddleware = async (
   next: NextFunction
 ): Promise<void> => {
   try {
+    let token: string | null = null;
+
+    // 1. Try reading from Authorization Header
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+
+    // 2. Try reading from cookie header manually
+    if (!token && req.headers.cookie) {
+      const match = req.headers.cookie.match(/(?:^|;)\s*token\s*=\s*([^;]+)/);
+      if (match) {
+        token = match[1];
+      }
+    }
+
+    if (!token) {
       res.status(401).json({ error: 'Access denied. No token provided.' });
       return;
     }
 
-    const token = authHeader.split(' ')[1];
     const decoded = verifyToken(token);
     
     req.user = {
