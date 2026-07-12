@@ -7,6 +7,9 @@ import reviewRoutes from './routes/review.routes';
 import wishlistRoutes from './routes/wishlist.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import homeRoutes from './routes/home.routes';
+import blogRoutes from './routes/blog.routes';
+import newsletterRoutes from './routes/newsletter.routes';
+import contactRoutes from './routes/contact.routes';
 
 dotenv.config();
 
@@ -23,6 +26,9 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/home', homeRoutes);
 app.use('/api', reviewRoutes);
+app.use('/api/blog', blogRoutes);
+app.use('/api/newsletter', newsletterRoutes);
+app.use('/api/contact', contactRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Hello World!');
