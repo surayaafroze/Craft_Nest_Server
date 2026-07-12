@@ -1,14 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
+import { Role } from '../constants/roles';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
     userId: string;
-    role: 'user' | 'admin';
+    role: Role;
   };
 }
 
-export const authMiddleware = async (
+export const requireAuth = async (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction
@@ -24,7 +25,7 @@ export const authMiddleware = async (
 
     // 2. Try reading from cookie header manually
     if (!token && req.headers.cookie) {
-      const match = req.headers.cookie.match(/(?:^|;)\s*token\s*=\s*([^;]+)/);
+      const match = req.headers.cookie.match(/(?:^|;)\s*(?:better-auth\.session_token|token)\s*=\s*([^;]+)/);
       if (match) {
         token = match[1];
       }
