@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router } from 'express'; // Trigger restart
 import {
   getItems,
   getItemById,
@@ -9,7 +9,7 @@ import {
   getMyItems,
   updateItemStatus,
 } from '../controllers/item.controller';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, optionalAuth } from '../middleware/auth';
 import { adminOnly, ownerOrAdminGuard } from '../middleware/roleGuard';
 import { validate } from '../middleware/validate';
 import { createItemSchema, updateItemSchema, updateStatusSchema } from '../validators/item.validator';
@@ -17,12 +17,14 @@ import { createItemSchema, updateItemSchema, updateStatusSchema } from '../valid
 const router = Router();
 
 // Public routes
-router.get('/', getItems);
+router.get('/', optionalAuth, getItems as any);
 router.get('/related/:id', getRelatedItems);
-router.get('/:id', getItemById);
 
 // Authenticated routes
 router.get('/mine', requireAuth, getMyItems as any);
+
+// Public route that must come after /mine
+router.get('/:id', getItemById);
 router.post('/', requireAuth, validate(createItemSchema), createItem as any);
 router.put('/:id', requireAuth, ownerOrAdminGuard({ collection: 'items' }), validate(updateItemSchema), updateItem as any);
 router.delete('/:id', requireAuth, ownerOrAdminGuard({ collection: 'items' }), deleteItem as any);

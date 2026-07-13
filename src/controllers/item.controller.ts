@@ -212,6 +212,10 @@ function mapItemResponse(item: ItemDocument) {
   return {
     id: item._id.toString(),
     ownerId: item.ownerId.toString(),
+    owner: item.owner ? {
+      name: item.owner.name,
+      avatarUrl: item.owner.avatarUrl || null,
+    } : undefined,
     title: item.title,
     shortDescription: item.shortDescription,
     fullDescription: item.fullDescription,

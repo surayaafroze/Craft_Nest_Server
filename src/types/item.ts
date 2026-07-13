@@ -3,6 +3,10 @@ import { ObjectId } from 'mongodb';
 export interface ItemDocument {
   _id: ObjectId;
   ownerId: ObjectId;
+  owner?: {
+    name: string;
+    avatarUrl?: string | null;
+  };
   title: string;
   shortDescription: string;
   fullDescription: string;
