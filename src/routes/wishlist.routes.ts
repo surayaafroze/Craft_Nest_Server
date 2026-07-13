@@ -10,9 +10,9 @@ const router = Router();
 router.get('/', requireAuth, getWishlist as any);
 
 // Add an item to user's wishlist
-router.post('/:itemId', requireAuth, validate(itemIdSchema), addToWishlist as any);
+router.post('/:itemId', requireAuth, addToWishlist as any);
 
 // Remove an item from user's wishlist
-router.delete('/:itemId', requireAuth, validate(itemIdSchema), removeFromWishlist as any);
+router.delete('/:itemId', requireAuth, removeFromWishlist as any);
 
 export default router;
