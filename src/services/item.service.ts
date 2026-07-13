@@ -1,6 +1,7 @@
 import { ObjectId } from 'mongodb';
 import { getDb } from '../config/db';
 import { ItemDocument } from '../types/item';
+import { UserDocument } from '../types/user';
 
 export interface GetItemsParams {
   search?: string;
@@ -19,6 +20,21 @@ export interface GetItemsParams {
 export class ItemService {
   static getCollection() {
     return getDb().collection<ItemDocument>('items');
+  }
+
+  static async populateOwners(items: ItemDocument[]): Promise<ItemDocument[]> {
+    if (!items.length) return items;
+    
+    const usersCollection = getDb().collection<UserDocument>('users');
+    const ownerIds = [...new Set(items.map(item => item.ownerId.toString()))].map(id => new ObjectId(id));
+    
+    const users = await usersCollection.find({ _id: { $in: ownerIds } }).toArray();
+    const userMap = new Map(users.map(u => [u._id.toString(), { name: u.name, avatarUrl: u.avatarUrl }]));
+    
+    return items.map(item => ({
+      ...item,
+      owner: userMap.get(item.ownerId.toString())
+    }));
   }
 
   static async getItems(params: GetItemsParams) {
@@ -46,9 +62,12 @@ export class ItemService {
       if (maxPrice) queryObj.price.$lte = Number(maxPrice);
     }
 
-    // 4. Text Search
+    // 4. Text Search (using regex for partial matches)
     if (search && typeof search === 'string') {
-      queryObj.$text = { $search: search };
+      queryObj.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { shortDescription: { $regex: search, $options: 'i' } }
+      ];
     }
 
     // 5. Sorting
@@ -62,7 +81,9 @@ export class ItemService {
     const items = await itemsCollection.find(queryObj).sort(sortObj).skip(skip).limit(limit).toArray();
     const total = await itemsCollection.countDocuments(queryObj);
 
-    return { items, total };
+    const populatedItems = await this.populateOwners(items);
+
+    return { items: populatedItems, total };
   }
 
   static async getItemById(id: string, currentUserId?: string, isAdmin?: boolean) {
@@ -79,16 +100,19 @@ export class ItemService {
       }
     }
 
-    return item;
+    const populated = await this.populateOwners([item]);
+    return populated[0];
   }
 
   static async getRelatedItems(categoryId: string, excludeId: string) {
     const itemsCollection = this.getCollection();
-    return itemsCollection.find({
+    const items = await itemsCollection.find({
       category: categoryId,
       _id: { $ne: new ObjectId(excludeId) },
       status: 'approved',
     }).limit(4).toArray();
+    
+    return this.populateOwners(items);
   }
 
   static async createItem(data: Partial<ItemDocument>, userId: string) {
@@ -137,7 +161,9 @@ export class ItemService {
     const items = await itemsCollection.find(queryObj).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
     const total = await itemsCollection.countDocuments(queryObj);
 
-    return { items, total };
+    const populatedItems = await this.populateOwners(items);
+
+    return { items: populatedItems, total };
   }
 
   static async updateItemStatus(id: string, status: ItemDocument['status']) {
