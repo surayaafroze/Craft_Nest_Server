@@ -54,21 +54,21 @@ export const getBlogPreview = async (req: Request, res: Response): Promise<void>
         id: 'mock1',
         title: 'The Art of Ceramic Glazing',
         excerpt: 'Discover the hidden techniques master artisans use to achieve perfect glass-like finishes on their pottery.',
-        image: 'https://images.unsplash.com/photo-1610701596007-11502861dcfa?auto=format&fit=crop&q=80&w=800',
+        image: '/images/seed/ceramic-bowl.png',
         createdAt: new Date().toISOString(),
       },
       {
         id: 'mock2',
         title: 'Sustainable Leather Sourcing',
         excerpt: 'How ethical tanneries are changing the landscape of handmade leather goods without compromising quality.',
-        image: 'https://images.unsplash.com/photo-1605333552097-fc6db2cdd74e?auto=format&fit=crop&q=80&w=800',
+        image: '/images/seed/leather-wallet.png',
         createdAt: new Date().toISOString(),
       },
       {
         id: 'mock3',
         title: 'Mastering Wood Joinery',
         excerpt: 'A beginner’s guide to understanding dovetails, mortise, and tenon joints in custom furniture design.',
-        image: 'https://images.unsplash.com/photo-1542013898-752178bd0268?auto=format&fit=crop&q=80&w=800',
+        image: '/images/seed/walnut-box.png',
         createdAt: new Date().toISOString(),
       }
     ];

@@ -17,6 +17,8 @@ export const getItems = async (req: AuthenticatedRequest, res: Response, next: N
       limit = '12' 
     } = req.query;
 
+    console.log("getItems called with query:", req.query);
+
     const pageNum = parseInt(page as string, 10);
     const limitNum = parseInt(limit as string, 10);
     const skip = (pageNum - 1) * limitNum;
