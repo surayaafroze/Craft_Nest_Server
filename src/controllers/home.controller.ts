@@ -51,21 +51,21 @@ export const getBlogPreview = async (req: Request, res: Response): Promise<void>
       
     const previewData = blogposts.length >= 3 ? blogposts : [
       {
-        id: 'mock1',
+        id: 'ceramic-glazing',
         title: 'The Art of Ceramic Glazing',
         excerpt: 'Discover the hidden techniques master artisans use to achieve perfect glass-like finishes on their pottery.',
         image: '/images/seed/ceramic-bowl.png',
         createdAt: new Date().toISOString(),
       },
       {
-        id: 'mock2',
+        id: 'sustainable-leather',
         title: 'Sustainable Leather Sourcing',
         excerpt: 'How ethical tanneries are changing the landscape of handmade leather goods without compromising quality.',
         image: '/images/seed/leather-wallet.png',
         createdAt: new Date().toISOString(),
       },
       {
-        id: 'mock3',
+        id: 'wood-joinery',
         title: 'Mastering Wood Joinery',
         excerpt: 'A beginner’s guide to understanding dovetails, mortise, and tenon joints in custom furniture design.',
         image: '/images/seed/walnut-box.png',
@@ -106,5 +106,32 @@ export const subscribeNewsletter = async (req: Request, res: Response): Promise<
   } catch (error) {
     console.error('Error subscribing to newsletter:', error);
     res.status(500).json({ success: false, message: 'Failed to subscribe to newsletter' });
+  }
+};
+
+export const getPlatformStatistics = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const db = getDb();
+    
+    // Run counts in parallel
+    const [totalUsers, totalItems, approvedItems, totalReviews] = await Promise.all([
+      db.collection('users').countDocuments(),
+      db.collection('items').countDocuments(),
+      db.collection('items').countDocuments({ status: 'approved' }),
+      db.collection('reviews').countDocuments()
+    ]);
+    
+    res.json({
+      success: true,
+      data: {
+        totalUsers: totalUsers > 0 ? totalUsers : 2450, // Mock fallback if db is empty
+        totalItems: totalItems > 0 ? totalItems : 18400,
+        approvedItems: approvedItems > 0 ? approvedItems : 18000,
+        totalReviews: totalReviews > 0 ? totalReviews : 45200
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching platform statistics:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch platform statistics' });
   }
 };
