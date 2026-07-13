@@ -37,3 +37,29 @@ export const updateMe = async (req: AuthenticatedRequest, res: Response, next: N
     next(error);
   }
 };
+
+export const getUsers = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const users = await UserService.getUsers();
+    res.status(200).json({ users });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateUserStatus = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string;
+    const { status } = req.body;
+
+    const updatedUser = await UserService.updateUserStatus(id, status);
+    
+    if (!updatedUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.status(200).json({ message: 'User status updated successfully', user: updatedUser });
+  } catch (error) {
+    next(error);
+  }
+};

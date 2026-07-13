@@ -39,4 +39,35 @@ export class UserService {
 
     return result;
   }
+  public static async getUsers() {
+    const db = getDb();
+    const usersCollection = db.collection<UserDocument>('users');
+
+    const users = await usersCollection.find(
+      {},
+      { projection: { passwordHash: 0 } }
+    ).toArray();
+
+    return users;
+  }
+
+  public static async updateUserStatus(userId: string, status: string) {
+    const db = getDb();
+    const usersCollection = db.collection<UserDocument>('users');
+    
+    let updateDoc: any = {};
+    if (status === 'admin') {
+      updateDoc = { role: 'admin' };
+    } else {
+      updateDoc = { status, role: 'user' }; // demote if active/suspended
+    }
+
+    const result = await usersCollection.findOneAndUpdate(
+      { _id: new ObjectId(userId) },
+      { $set: updateDoc },
+      { returnDocument: 'after', projection: { passwordHash: 0 } }
+    );
+
+    return result;
+  }
 }

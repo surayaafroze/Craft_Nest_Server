@@ -7,3 +7,7 @@ export const updateUserSchema = z.object({
   phone: z.string().max(20, 'Phone number must be less than 20 characters').optional(),
   location: z.string().max(100, 'Location must be less than 100 characters').optional(),
 });
+
+export const updateUserStatusSchema = z.object({
+  status: z.enum(['active', 'suspended', 'admin']),
+});
