@@ -3,6 +3,8 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import authRoutes from './routes/auth.routes';
+import userRoutes from './routes/user.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 import itemRoutes from './routes/item.routes';
 import reviewRoutes from './routes/review.routes';
 import wishlistRoutes from './routes/wishlist.routes';
@@ -11,6 +13,7 @@ import homeRoutes from './routes/home.routes';
 import blogRoutes from './routes/blog.routes';
 import newsletterRoutes from './routes/newsletter.routes';
 import contactRoutes from './routes/contact.routes';
+import categoryRoutes from './routes/category.routes';
 
 dotenv.config();
 
@@ -26,6 +29,8 @@ app.use(cookieParser());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/items', itemRoutes);
 app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/analytics', analyticsRoutes);
@@ -34,6 +39,7 @@ app.use('/api', reviewRoutes);
 app.use('/api/blog', blogRoutes);
 app.use('/api/newsletter', newsletterRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/categories', categoryRoutes);
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Hello World!');
