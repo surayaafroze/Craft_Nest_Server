@@ -42,10 +42,11 @@ export const me = async (req: AuthenticatedRequest, res: Response, next: NextFun
 
 export const syncSession = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const sessionToken = req.cookies['better-auth.session_token'] || req.cookies['__Secure-better-auth.session_token'];
+    // Better Auth's jwt() plugin stores the JWT in the 'session_data' cookie, not 'session_token'
+    const sessionToken = req.cookies['better-auth.session_data'] || req.cookies['__Secure-better-auth.session_data'];
     
     if (!sessionToken) {
-      res.status(400).json({ error: 'No Better Auth session token found.' });
+      res.status(400).json({ error: 'No Better Auth session data token found.' });
       return;
     }
 
@@ -58,7 +59,8 @@ export const syncSession = async (req: Request, res: Response, next: NextFunctio
     try {
       decoded = jwt.verify(sessionToken, JWT_SECRET);
     } catch (err) {
-      res.status(401).json({ error: 'Invalid Better Auth session token.' });
+      console.error("JWT Verification failed in syncSession:", err);
+      res.status(401).json({ error: 'Invalid Better Auth session token.', details: err instanceof Error ? err.message : String(err) });
       return;
     }
 
@@ -89,8 +91,9 @@ export const syncSession = async (req: Request, res: Response, next: NextFunctio
     });
 
     res.status(200).json({ message: 'Session synchronized successfully.' });
-  } catch (error) {
-    next(error);
+  } catch (error: any) {
+    console.error("Error in syncSession:", error);
+    res.status(500).json({ error: 'Internal Server Error', details: error?.message, stack: error?.stack });
   }
 };
 

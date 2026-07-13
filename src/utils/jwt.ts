@@ -1,6 +1,5 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET;
 
 export interface TokenPayload {
   userId: string;
@@ -8,6 +7,7 @@ export interface TokenPayload {
 }
 
 export const signToken = (payload: TokenPayload, expiresIn: SignOptions['expiresIn'] = '7d'): string => {
+  const JWT_SECRET = process.env.JWT_SECRET;
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not defined in environment variables.');
   }
@@ -15,6 +15,7 @@ export const signToken = (payload: TokenPayload, expiresIn: SignOptions['expires
 };
 
 export const verifyToken = (token: string): TokenPayload => {
+  const JWT_SECRET = process.env.JWT_SECRET;
   if (!JWT_SECRET) {
     throw new Error('JWT_SECRET is not defined in environment variables.');
   }
