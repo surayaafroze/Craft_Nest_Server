@@ -27,6 +27,19 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+import { connectDb } from './config/db';
+
+// Ensure DB is connected before handling any API requests
+app.use(async (req: Request, res: Response, next) => {
+  try {
+    await connectDb();
+    next();
+  } catch (error) {
+    console.error('Database connection failed in middleware:', error);
+    res.status(500).json({ success: false, message: 'Internal server error: Database connection failed' });
+  }
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);

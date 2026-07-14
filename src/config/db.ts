@@ -16,10 +16,10 @@ export const connectDb = async (): Promise<Db> => {
   client = new MongoClient(uri);
 
   try {
-    await client.connect();
+    // await client.connect();
     // Send a ping to confirm connection
-    await client.db('admin').command({ ping: 1 });
-    console.log('Successfully connected and pinged MongoDB deployment!');
+    // await client.db('admin').command({ ping: 1 });
+    // console.log('Successfully connected and pinged MongoDB deployment!');
     
     db = client.db(dbName);
     return db;
