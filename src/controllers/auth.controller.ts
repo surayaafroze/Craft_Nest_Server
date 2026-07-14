@@ -85,8 +85,8 @@ export const syncSession = async (req: Request, res: Response, next: NextFunctio
 
     res.cookie('backend_jwt', backendToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
@@ -101,8 +101,8 @@ export const logout = async (req: Request, res: Response, next: NextFunction): P
   try {
     res.clearCookie('backend_jwt', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      secure: true,
+      sameSite: 'none',
     });
     res.status(200).json({ message: 'Logged out successfully.' });
   } catch (error) {
