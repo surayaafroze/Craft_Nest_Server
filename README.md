@@ -71,16 +71,14 @@ Create a `.env` file in the root of the server project. **Never expose actual se
 ```env
 MONGODB_URI=
 JWT_SECRET=
-BETTER_AUTH_SECRET=
-BETTER_AUTH_URL=
-GOOGLE_CLIENT_ID=
+
 ```
 
 ## 🛠️ Installation
 
 1. **Clone the repository:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/surayaafroze/Craft_Nest_Server
    cd craft_nest_server
    ```
 
