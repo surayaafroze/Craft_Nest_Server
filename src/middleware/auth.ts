@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
 import { Role } from '../constants/roles';
+import jwt from 'jsonwebtoken';
+import { getDb } from '../config/db';
+import { ObjectId } from 'mongodb';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -39,6 +42,26 @@ export const requireAuth = async (
     }
 
     if (!token) {
+      const baToken = req.cookies && (req.cookies['better-auth.session_data'] || req.cookies['__Secure-better-auth.session_data']);
+      if (baToken) {
+        try {
+          const JWT_SECRET = process.env.JWT_SECRET || '';
+          const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
+          const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
+          if (userId) {
+            const user = await getDb().collection('users').findOne({ _id: new ObjectId(userId) });
+            if (user) {
+              req.user = {
+                userId: user._id.toString(),
+                role: (user.role as Role) || 'user',
+              };
+              return next();
+            }
+          }
+        } catch (e) {
+          // Fall back to the 401 error below
+        }
+      }
       res.status(401).json({ error: 'Access denied. No backend JWT token provided.' });
       return;
     }
@@ -86,6 +109,22 @@ export const optionalAuth = async (
         userId: decoded.userId,
         role: decoded.role,
       };
+    } else {
+      const baToken = req.cookies && (req.cookies['better-auth.session_data'] || req.cookies['__Secure-better-auth.session_data']);
+      if (baToken) {
+        const JWT_SECRET = process.env.JWT_SECRET || '';
+        const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
+        const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
+        if (userId) {
+          const user = await getDb().collection('users').findOne({ _id: new ObjectId(userId) });
+          if (user) {
+            req.user = {
+              userId: user._id.toString(),
+              role: (user.role as Role) || 'user',
+            };
+          }
+        }
+      }
     }
   } catch (error) {
     // Silently fail for optional auth
