@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum UserStatus {
+  active
+  suspended
+}
+
+enum AuthProvider {
+  local
+  google
+}
+
+enum ItemStatus {
+  pending
+  approved
+  rejected
+}
+
+enum ContactStatus {
+  new
+  read
+  responded
+}
+
+model User {
+  id           String       @id @default(uuid())
+  name         String
+  email        String       @unique
+  passwordHash String?
+  authProvider AuthProvider @default(local)
+  googleId     String?      @unique
+  avatarUrl    String?
+  role         UserRole     @default(user)
+  bio          String       @default("")
+  location     String       @default("")
+  phone        String       @default("")
+  status       UserStatus   @default(active)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  items    Item[]
+  reviews  Review[]
+  wishlist Wishlist?
+
+  @@map("users")
+}
+
+model Item {
+  id               String     @id @default(uuid())
+  ownerId          String
+  owner            User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  title            String
+  shortDescription String
+  fullDescription  String
+  price            Float
+  category         String
+  images           String[]   @default([])
+  quantity         Int        @default(1)
+  location         String     @default("")
+  avgRating        Float      @default(0)
+  reviewCount      Int        @default(0)
+  status           ItemStatus @default(pending)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  reviews       Review[]
+  wishlistItems WishlistItem[]
+
+  @@index([ownerId])
+  @@index([category])
+  @@index([price])
+  @@index([status])
+  @@map("items")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating    Int
+  comment   String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, itemId])
+  @@index([itemId])
+  @@index([userId])
+  @@map("reviews")
+}
+
+model Wishlist {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items WishlistItem[]
+
+  @@map("wishlists")
+}
+
+model WishlistItem {
+  wishlistId String
+  wishlist   Wishlist @relation(fields: [wishlistId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  addedAt    DateTime @default(now())
+
+  @@id([wishlistId, itemId])
+  @@map("wishlist_items")
+}
+
+model BlogPost {
+  id          String   @id @default(uuid())
+  slug        String   @unique
+  title       String
+  coverImage  String
+  content     String
+  tags        String[] @default([])
+  publishedAt DateTime @default(now())
+
+  @@map("blogposts")
+}
+
+model NewsletterSubscriber {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  subscribedAt DateTime @default(now())
+
+  @@map("newslettersubscribers")
+}
+
+model ContactMessage {
+  id        String        @id @default(uuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  status    ContactStatus @default(new)
+  createdAt DateTime      @default(now())
+
+  @@map("contactmessages")
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  image       String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("categories")
+}
