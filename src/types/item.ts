@@ -1,8 +1,7 @@
-import { ObjectId } from 'mongodb';
-
 export interface ItemDocument {
-  _id: ObjectId;
-  ownerId: ObjectId;
+  id?: string;
+  _id?: string;
+  ownerId: string;
   owner?: {
     name: string;
     avatarUrl?: string | null;

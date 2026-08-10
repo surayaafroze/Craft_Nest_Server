@@ -1,7 +1,6 @@
-import { ObjectId } from 'mongodb';
-
 export interface NewsletterSubscriberDocument {
-  _id: ObjectId;
-  email: string;                   // unique index
+  id?: string;
+  _id?: string;
+  email: string;
   subscribedAt: Date;
 }

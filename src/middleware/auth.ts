@@ -2,8 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../utils/jwt';
 import { Role } from '../constants/roles';
 import jwt from 'jsonwebtoken';
-import { getDb } from '../config/db';
-import { ObjectId } from 'mongodb';
+import { prisma } from '../config/db';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -49,10 +48,10 @@ export const requireAuth = async (
           const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
           const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
           if (userId) {
-            const user = await getDb().collection('users').findOne({ _id: new ObjectId(userId) });
+            const user = await prisma.user.findUnique({ where: { id: userId } });
             if (user) {
               req.user = {
-                userId: user._id.toString(),
+                userId: user.id,
                 role: (user.role as Role) || 'user',
               };
               return next();
@@ -116,10 +115,10 @@ export const optionalAuth = async (
         const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
         const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
         if (userId) {
-          const user = await getDb().collection('users').findOne({ _id: new ObjectId(userId) });
+          const user = await prisma.user.findUnique({ where: { id: userId } });
           if (user) {
             req.user = {
-              userId: user._id.toString(),
+              userId: user.id,
               role: (user.role as Role) || 'user',
             };
           }

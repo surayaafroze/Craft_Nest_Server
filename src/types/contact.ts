@@ -1,7 +1,6 @@
-import { ObjectId } from 'mongodb';
-
 export interface ContactMessageDocument {
-  _id: ObjectId;
+  id?: string;
+  _id?: string;
   name: string;
   email: string;
   subject: string;

@@ -1,7 +1,6 @@
-import { ObjectId } from 'mongodb';
-
 export interface CategoryDocument {
-  _id: ObjectId;
+  id?: string;
+  _id?: string;
   name: string;
   description: string;
   image: string;

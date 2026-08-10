@@ -1,6 +1,5 @@
 import { Response, NextFunction } from 'express';
-import { ObjectId } from 'mongodb';
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 import { AuthenticatedRequest } from './auth';
 import { Role, ROLES } from '../constants/roles';
 
@@ -30,6 +29,13 @@ export interface OwnerOrAdminOptions {
   resourceIdParamName?: string; // defaults to 'id'
 }
 
+const collectionToModelMap: Record<string, string> = {
+  items: 'item',
+  reviews: 'review',
+  wishlists: 'wishlist',
+  users: 'user',
+};
+
 export const ownerOrAdminGuard = (options: OwnerOrAdminOptions) => {
   const ownerField = options.ownerField || 'ownerId';
   const resourceIdParamName = options.resourceIdParamName || 'id';
@@ -53,16 +59,15 @@ export const ownerOrAdminGuard = (options: OwnerOrAdminOptions) => {
         return;
       }
 
-      let objectId: ObjectId;
-      try {
-        objectId = new ObjectId(resourceId);
-      } catch {
-        res.status(400).json({ error: 'Invalid resource ID format' });
+      const modelName = collectionToModelMap[options.collection] || options.collection;
+      const model = (prisma as any)[modelName];
+
+      if (!model) {
+        res.status(500).json({ error: `Unknown model for collection: ${options.collection}` });
         return;
       }
 
-      const db = getDb();
-      const resource = await db.collection(options.collection).findOne({ _id: objectId });
+      const resource = await model.findUnique({ where: { id: resourceId } });
 
       if (!resource) {
         res.status(404).json({ error: 'Resource not found' });
@@ -75,7 +80,7 @@ export const ownerOrAdminGuard = (options: OwnerOrAdminOptions) => {
         return;
       }
 
-      const ownerIdStr = ownerId instanceof ObjectId ? ownerId.toString() : ownerId;
+      const ownerIdStr = String(ownerId);
       if (ownerIdStr !== req.user.userId) {
         res.status(403).json({ error: 'Access forbidden. You do not own this resource.' });
         return;

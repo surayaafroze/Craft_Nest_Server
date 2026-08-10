@@ -1,13 +1,12 @@
-import { ObjectId } from 'mongodb';
-
 export interface UserDocument {
-  _id?: ObjectId;
+  id?: string;
+  _id?: string;
   name: string;
-  email: string;                 // unique index
-  passwordHash: string | null;   // null for Google-only accounts
+  email: string;
+  passwordHash: string | null;
   authProvider: 'local' | 'google';
-  googleId: string | null;       // unique sparse index
-  avatarUrl: string | null;      // ImgBB URL or Google profile picture URL
+  googleId: string | null;
+  avatarUrl: string | null;
   role: 'user' | 'admin';
   bio: string;
   location: string;

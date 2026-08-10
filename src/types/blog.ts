@@ -1,9 +1,8 @@
-import { ObjectId } from 'mongodb';
-
 export interface BlogPostDocument {
-  _id: ObjectId;
+  id?: string;
+  _id?: string;
   title: string;
-  slug: string;                    // unique index
+  slug: string;
   coverImage: string;
   content: string;
   tags: string[];
