@@ -1,176 +1,131 @@
-import { ObjectId, Db } from 'mongodb';
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 import { ReviewDocument } from '../types/review';
-import { ItemDocument } from '../types/item';
 
 export class ReviewService {
-  
   /**
-   * Recalculates the avgRating and reviewCount for an item based on the reviews collection.
+   * Recalculates the avgRating and reviewCount for an item based on the reviews table.
    */
-  public static async recalculateItemStats(db: Db, itemId: ObjectId): Promise<void> {
-    const reviewsCollection = db.collection<ReviewDocument>('reviews');
-    const itemsCollection = db.collection<ItemDocument>('items');
+  public static async recalculateItemStats(itemId: string): Promise<void> {
+    const stats = await prisma.review.aggregate({
+      where: { itemId },
+      _avg: { rating: true },
+      _count: { rating: true },
+    });
 
-    const stats = await reviewsCollection
-      .aggregate([
-        { $match: { itemId } },
-        {
-          $group: {
-            _id: '$itemId',
-            avgRating: { $avg: '$rating' },
-            reviewCount: { $sum: 1 },
-          },
-        },
-      ])
-      .toArray();
+    const reviewCount = stats._count.rating || 0;
+    const rawAvg = stats._avg.rating || 0;
+    const avgRating = reviewCount > 0 ? Math.round(rawAvg * 10) / 10 : 0;
 
-    if (stats.length > 0) {
-      const { avgRating, reviewCount } = stats[0];
-      await itemsCollection.updateOne(
-        { _id: itemId },
-        {
-          $set: {
-            avgRating: Math.round(avgRating * 10) / 10, // Round to 1 decimal place
-            reviewCount,
-            updatedAt: new Date(),
-          },
-        }
-      );
-    } else {
-      await itemsCollection.updateOne(
-        { _id: itemId },
-        {
-          $set: {
-            avgRating: 0,
-            reviewCount: 0,
-            updatedAt: new Date(),
-          },
-        }
-      );
-    }
+    await prisma.item.update({
+      where: { id: itemId },
+      data: {
+        avgRating,
+        reviewCount,
+      },
+    });
   }
 
   public static async getReviewsByItem(itemId: string): Promise<any[]> {
-    const db = getDb();
-    const reviewsCollection = db.collection<ReviewDocument>('reviews');
-    const itemIdObj = new ObjectId(itemId);
-
-    const reviews = await reviewsCollection
-      .aggregate([
-        { $match: { itemId: itemIdObj } },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'userId',
-            foreignField: '_id',
-            as: 'user',
+    const reviews = await prisma.review.findMany({
+      where: { itemId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            avatarUrl: true,
           },
         },
-        { $unwind: { path: '$user', preserveNullAndEmptyArrays: true } },
-        {
-          $project: {
-            _id: 1,
-            rating: 1,
-            comment: 1,
-            createdAt: 1,
-            user: {
-              id: '$user._id',
-              name: '$user.name',
-              avatarUrl: '$user.avatarUrl',
-            },
-          },
-        },
-        { $sort: { createdAt: -1 } },
-      ])
-      .toArray();
+      },
+    });
 
-    return reviews;
+    return reviews.map((r) => ({
+      _id: r.id,
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      user: {
+        id: r.user.id,
+        name: r.user.name,
+        avatarUrl: r.user.avatarUrl,
+      },
+    }));
   }
 
   public static async getMyReviews(userId: string): Promise<any[]> {
-    const db = getDb();
-    const reviewsCollection = db.collection<ReviewDocument>('reviews');
-    const userIdObj = new ObjectId(userId);
-
-    const reviews = await reviewsCollection
-      .aggregate([
-        { $match: { userId: userIdObj } },
-        {
-          $lookup: {
-            from: 'items',
-            localField: 'itemId',
-            foreignField: '_id',
-            as: 'item',
+    const reviews = await prisma.review.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        item: {
+          select: {
+            id: true,
+            title: true,
+            images: true,
           },
         },
-        { $unwind: { path: '$item', preserveNullAndEmptyArrays: true } },
-        {
-          $project: {
-            _id: 1,
-            rating: 1,
-            comment: 1,
-            createdAt: 1,
-            item: {
-              id: '$item._id',
-              title: '$item.title',
-              images: '$item.images',
-            },
-          },
-        },
-        { $sort: { createdAt: -1 } },
-      ])
-      .toArray();
+      },
+    });
 
-    return reviews;
+    return reviews.map((r) => ({
+      _id: r.id,
+      id: r.id,
+      rating: r.rating,
+      comment: r.comment,
+      createdAt: r.createdAt,
+      item: {
+        id: r.item.id,
+        title: r.item.title,
+        images: r.item.images,
+      },
+    }));
   }
 
-  public static async createReview(userId: string, itemId: string, data: { rating: number; comment: string }): Promise<ReviewDocument> {
-    const db = getDb();
-    const itemsCollection = db.collection<ItemDocument>('items');
-    const reviewsCollection = db.collection<ReviewDocument>('reviews');
-
-    const itemIdObj = new ObjectId(itemId);
-    const userIdObj = new ObjectId(userId);
-
-    const item = await itemsCollection.findOne({ _id: itemIdObj });
+  public static async createReview(
+    userId: string,
+    itemId: string,
+    data: { rating: number; comment: string }
+  ): Promise<ReviewDocument> {
+    const item = await prisma.item.findUnique({ where: { id: itemId } });
     if (!item) {
       throw new Error('Item not found');
     }
 
-    if (item.ownerId.toString() === userId) {
+    if (item.ownerId === userId) {
       throw new Error('You cannot review your own item.');
     }
 
-    const newReview: ReviewDocument = {
-      _id: new ObjectId(),
-      userId: userIdObj,
-      itemId: itemIdObj,
-      rating: data.rating,
-      comment: data.comment,
-      createdAt: new Date(),
-    };
-
     try {
-      await reviewsCollection.insertOne(newReview);
+      const newReview = await prisma.review.create({
+        data: {
+          userId,
+          itemId,
+          rating: data.rating,
+          comment: data.comment,
+        },
+      });
+
+      await this.recalculateItemStats(itemId);
+      return {
+        ...newReview,
+        _id: newReview.id,
+      };
     } catch (dbError: any) {
-      // MongoDB code 11000 indicates unique index collision
-      if (dbError.code === 11000) {
+      // P2002 is Prisma's unique constraint error code
+      if (dbError.code === 'P2002') {
         throw new Error('You have already reviewed this item.');
       }
       throw dbError;
     }
-
-    await this.recalculateItemStats(db, itemIdObj);
-    return newReview;
   }
 
-  public static async updateReview(reviewId: string, data: { rating?: number; comment?: string }): Promise<ReviewDocument | null> {
-    const db = getDb();
-    const reviewsCollection = db.collection<ReviewDocument>('reviews');
-    const reviewIdObj = new ObjectId(reviewId);
-
-    const review = await reviewsCollection.findOne({ _id: reviewIdObj });
+  public static async updateReview(
+    reviewId: string,
+    data: { rating?: number; comment?: string }
+  ): Promise<ReviewDocument | null> {
+    const review = await prisma.review.findUnique({ where: { id: reviewId } });
     if (!review) {
       return null;
     }
@@ -179,34 +134,37 @@ export class ReviewService {
     if (data.rating !== undefined) updateDoc.rating = data.rating;
     if (data.comment !== undefined) updateDoc.comment = data.comment;
 
-    await reviewsCollection.updateOne({ _id: reviewIdObj }, { $set: updateDoc });
-    
-    // Recalculate stats since rating might have changed
-    await this.recalculateItemStats(db, review.itemId);
-    
-    // Return updated review
-    return reviewsCollection.findOne({ _id: reviewIdObj });
+    const updatedReview = await prisma.review.update({
+      where: { id: reviewId },
+      data: updateDoc,
+    });
+
+    await this.recalculateItemStats(review.itemId);
+
+    return {
+      ...updatedReview,
+      _id: updatedReview.id,
+    };
   }
 
   public static async deleteReview(reviewId: string): Promise<boolean> {
-    const db = getDb();
-    const reviewsCollection = db.collection<ReviewDocument>('reviews');
-    const reviewIdObj = new ObjectId(reviewId);
-
-    const review = await reviewsCollection.findOne({ _id: reviewIdObj });
+    const review = await prisma.review.findUnique({ where: { id: reviewId } });
     if (!review) {
       return false;
     }
 
-    await reviewsCollection.deleteOne({ _id: reviewIdObj });
-    await this.recalculateItemStats(db, review.itemId);
+    await prisma.review.delete({ where: { id: reviewId } });
+    await this.recalculateItemStats(review.itemId);
 
     return true;
   }
 
   public static async getReviewById(reviewId: string): Promise<ReviewDocument | null> {
-    const db = getDb();
-    const reviewsCollection = db.collection<ReviewDocument>('reviews');
-    return reviewsCollection.findOne({ _id: new ObjectId(reviewId) });
+    const review = await prisma.review.findUnique({ where: { id: reviewId } });
+    if (!review) return null;
+    return {
+      ...review,
+      _id: review.id,
+    };
   }
 }

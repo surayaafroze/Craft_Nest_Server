@@ -1,7 +1,6 @@
-import { ObjectId } from 'mongodb';
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 import { ItemDocument } from '../types/item';
-import { UserDocument } from '../types/user';
+import { ItemStatus } from '@prisma/client';
 
 export interface GetItemsParams {
   search?: string;
@@ -18,163 +17,195 @@ export interface GetItemsParams {
 }
 
 export class ItemService {
-  static getCollection() {
-    return getDb().collection<ItemDocument>('items');
-  }
-
-  static async populateOwners(items: ItemDocument[]): Promise<ItemDocument[]> {
-    if (!items.length) return items;
-    
-    const usersCollection = getDb().collection<UserDocument>('users');
-    const ownerIds = [...new Set(items.map(item => item.ownerId.toString()))].map(id => new ObjectId(id));
-    
-    const users = await usersCollection.find({ _id: { $in: ownerIds } }).toArray();
-    const userMap = new Map(users.map(u => [u._id.toString(), { name: u.name, avatarUrl: u.avatarUrl }]));
-    
-    return items.map(item => ({
+  private static formatItem(item: any): ItemDocument {
+    if (!item) return item;
+    return {
       ...item,
-      owner: userMap.get(item.ownerId.toString())
-    }));
+      _id: item.id,
+      owner: item.owner ? { name: item.owner.name, avatarUrl: item.owner.avatarUrl } : item.owner,
+    };
   }
 
   static async getItems(params: GetItemsParams) {
     const { search, category, minPrice, maxPrice, status, sortBy, sortOrder, skip, limit, isAdmin } = params;
-    const itemsCollection = this.getCollection();
 
-    const queryObj: any = {};
+    const where: any = {};
 
     // 1. Status Filter
     if (isAdmin && status && typeof status === 'string') {
-      queryObj.status = status;
+      where.status = status as ItemStatus;
     } else {
-      queryObj.status = 'approved';
+      where.status = ItemStatus.approved;
     }
 
     // 2. Exact Match Filters
     if (category && typeof category === 'string') {
-      queryObj.category = category;
+      where.category = category;
     }
 
     // 3. Range Filters
     if (minPrice || maxPrice) {
-      queryObj.price = {};
-      if (minPrice) queryObj.price.$gte = Number(minPrice);
-      if (maxPrice) queryObj.price.$lte = Number(maxPrice);
+      where.price = {};
+      if (minPrice) where.price.gte = Number(minPrice);
+      if (maxPrice) where.price.lte = Number(maxPrice);
     }
 
-    // 4. Text Search (using regex for partial matches)
+    // 4. Text Search
     if (search && typeof search === 'string') {
-      queryObj.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { shortDescription: { $regex: search, $options: 'i' } }
+      where.OR = [
+        { title: { contains: search, mode: 'insensitive' } },
+        { shortDescription: { contains: search, mode: 'insensitive' } }
       ];
     }
 
     // 5. Sorting
-    const sortObj: any = {};
+    const orderBy: any = {};
     if (sortBy && typeof sortBy === 'string') {
-      sortObj[sortBy] = sortOrder === 'desc' ? -1 : 1;
+      orderBy[sortBy] = sortOrder === 'desc' ? 'desc' : 'asc';
     } else {
-      sortObj.createdAt = -1;
+      orderBy.createdAt = 'desc';
     }
 
-    const items = await itemsCollection.find(queryObj).sort(sortObj).skip(skip).limit(limit).toArray();
-    const total = await itemsCollection.countDocuments(queryObj);
+    const items = await prisma.item.findMany({
+      where,
+      orderBy,
+      skip,
+      take: limit,
+      include: {
+        owner: {
+          select: { name: true, avatarUrl: true }
+        }
+      }
+    });
 
-    const populatedItems = await this.populateOwners(items);
+    const total = await prisma.item.count({ where });
 
-    return { items: populatedItems, total };
+    return { items: items.map(this.formatItem), total };
   }
 
   static async getItemById(id: string, currentUserId?: string, isAdmin?: boolean) {
-    const itemsCollection = this.getCollection();
-    const objectId = new ObjectId(id);
+    let item: any;
+    try {
+      item = await prisma.item.findUnique({
+        where: { id },
+        include: {
+          owner: {
+            select: { name: true, avatarUrl: true }
+          }
+        }
+      });
+    } catch {
+      return null;
+    }
 
-    const item = await itemsCollection.findOne({ _id: objectId });
     if (!item) return null;
 
-    if (item.status !== 'approved') {
-      const isOwner = currentUserId && currentUserId === item.ownerId.toString();
+    if (item.status !== ItemStatus.approved) {
+      const isOwner = currentUserId && currentUserId === item.ownerId;
       if (!isOwner && !isAdmin) {
         throw new Error('Access forbidden');
       }
     }
 
-    const populated = await this.populateOwners([item]);
-    return populated[0];
+    return this.formatItem(item);
   }
 
   static async getRelatedItems(categoryId: string, excludeId: string) {
-    const itemsCollection = this.getCollection();
-    const items = await itemsCollection.find({
-      category: categoryId,
-      _id: { $ne: new ObjectId(excludeId) },
-      status: 'approved',
-    }).limit(4).toArray();
+    const items = await prisma.item.findMany({
+      where: {
+        category: categoryId,
+        id: { not: excludeId },
+        status: ItemStatus.approved,
+      },
+      take: 4,
+      include: {
+        owner: {
+          select: { name: true, avatarUrl: true }
+        }
+      }
+    });
     
-    return this.populateOwners(items);
+    return items.map(this.formatItem);
   }
 
   static async createItem(data: Partial<ItemDocument>, userId: string) {
-    const itemsCollection = this.getCollection();
-    
-    const newItem: Omit<ItemDocument, '_id'> = {
-      ownerId: new ObjectId(userId),
-      title: data.title as string,
-      shortDescription: data.shortDescription as string,
-      fullDescription: data.fullDescription as string,
-      price: data.price as number,
-      category: data.category as string,
-      images: data.images as string[],
-      quantity: data.quantity as number,
-      location: data.location as string,
-      avgRating: 0,
-      reviewCount: 0,
-      status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    const newItem = await prisma.item.create({
+      data: {
+        ownerId: userId,
+        title: data.title as string,
+        shortDescription: data.shortDescription as string,
+        fullDescription: data.fullDescription as string,
+        price: Number(data.price),
+        category: data.category as string,
+        images: data.images as string[],
+        quantity: Number(data.quantity),
+        location: data.location as string,
+        avgRating: 0,
+        reviewCount: 0,
+        status: ItemStatus.pending,
+      },
+      include: {
+        owner: {
+          select: { name: true, avatarUrl: true }
+        }
+      }
+    });
 
-    const result = await itemsCollection.insertOne(newItem as ItemDocument);
-    return { _id: result.insertedId, ...newItem };
+    return this.formatItem(newItem);
   }
 
   static async updateItem(id: string, updateData: Partial<ItemDocument>) {
-    const itemsCollection = this.getCollection();
-    const objectId = new ObjectId(id);
+    const { _id, id: itemId, owner, ownerId, createdAt, updatedAt, ...cleanData } = updateData as any;
 
-    updateData.updatedAt = new Date();
+    if (cleanData.price !== undefined) cleanData.price = Number(cleanData.price);
+    if (cleanData.quantity !== undefined) cleanData.quantity = Number(cleanData.quantity);
 
-    await itemsCollection.updateOne({ _id: objectId }, { $set: updateData });
-    return itemsCollection.findOne({ _id: objectId });
+    const updatedItem = await prisma.item.update({
+      where: { id },
+      data: cleanData,
+      include: {
+        owner: {
+          select: { name: true, avatarUrl: true }
+        }
+      }
+    });
+
+    return this.formatItem(updatedItem);
   }
 
   static async deleteItem(id: string) {
-    const itemsCollection = this.getCollection();
-    await itemsCollection.deleteOne({ _id: new ObjectId(id) });
+    await prisma.item.delete({ where: { id } });
   }
 
   static async getMyItems(userId: string, skip: number, limit: number) {
-    const itemsCollection = this.getCollection();
-    const queryObj = { ownerId: new ObjectId(userId) };
+    const where = { ownerId: userId };
 
-    const items = await itemsCollection.find(queryObj).sort({ createdAt: -1 }).skip(skip).limit(limit).toArray();
-    const total = await itemsCollection.countDocuments(queryObj);
+    const items = await prisma.item.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+      include: {
+        owner: {
+          select: { name: true, avatarUrl: true }
+        }
+      }
+    });
 
-    const populatedItems = await this.populateOwners(items);
+    const total = await prisma.item.count({ where });
 
-    return { items: populatedItems, total };
+    return { items: items.map(this.formatItem), total };
   }
 
   static async updateItemStatus(id: string, status: ItemDocument['status']) {
-    const itemsCollection = this.getCollection();
-    const objectId = new ObjectId(id);
-
-    const result = await itemsCollection.updateOne(
-      { _id: objectId },
-      { $set: { status, updatedAt: new Date() } }
-    );
-    
-    return result.matchedCount > 0;
+    try {
+      await prisma.item.update({
+        where: { id },
+        data: { status: status as ItemStatus }
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

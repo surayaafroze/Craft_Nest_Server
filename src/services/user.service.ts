@@ -1,73 +1,61 @@
-import { ObjectId } from 'mongodb';
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 import { UserDocument } from '../types/user';
+import { UserRole, UserStatus } from '@prisma/client';
 
 export class UserService {
+  private static formatUser(user: any) {
+    if (!user) return null;
+    const { passwordHash, ...rest } = user;
+    return {
+      ...rest,
+      _id: user.id,
+    };
+  }
+
   public static async getUserById(userId: string) {
-    const db = getDb();
-    const usersCollection = db.collection<UserDocument>('users');
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
 
-    const user = await usersCollection.findOne(
-      { _id: new ObjectId(userId) },
-      { projection: { passwordHash: 0 } }
-    );
-
-    return user;
+    return this.formatUser(user);
   }
 
   public static async updateUser(userId: string, updateData: Partial<UserDocument>) {
-    const db = getDb();
-    const usersCollection = db.collection<UserDocument>('users');
-
-    // Filter out restricted fields to ensure they cannot be updated
-    const { _id, email, passwordHash, role, authProvider, googleId, status, createdAt, ...allowedUpdates } = updateData as any;
+    const { _id, id, email, passwordHash, role, authProvider, googleId, status, createdAt, ...allowedUpdates } = updateData as any;
 
     if (Object.keys(allowedUpdates).length === 0) {
       return null;
     }
 
-    const result = await usersCollection.findOneAndUpdate(
-      { _id: new ObjectId(userId) },
-      { 
-        $set: { 
-          ...allowedUpdates,
-          updatedAt: new Date()
-        } 
-      },
-      { returnDocument: 'after', projection: { passwordHash: 0 } }
-    );
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: allowedUpdates,
+    });
 
-    return result;
+    return this.formatUser(updatedUser);
   }
+
   public static async getUsers() {
-    const db = getDb();
-    const usersCollection = db.collection<UserDocument>('users');
+    const users = await prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
 
-    const users = await usersCollection.find(
-      {},
-      { projection: { passwordHash: 0 } }
-    ).toArray();
-
-    return users;
+    return users.map(user => this.formatUser(user));
   }
 
   public static async updateUserStatus(userId: string, status: string) {
-    const db = getDb();
-    const usersCollection = db.collection<UserDocument>('users');
-    
     let updateDoc: any = {};
     if (status === 'admin') {
-      updateDoc = { role: 'admin' };
+      updateDoc = { role: UserRole.admin };
     } else {
-      updateDoc = { status, role: 'user' }; // demote if active/suspended
+      updateDoc = { status: status as UserStatus, role: UserRole.user };
     }
 
-    const result = await usersCollection.findOneAndUpdate(
-      { _id: new ObjectId(userId) },
-      { $set: updateDoc },
-      { returnDocument: 'after', projection: { passwordHash: 0 } }
-    );
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: updateDoc,
+    });
 
-    return result;
+    return this.formatUser(updatedUser);
   }
 }
