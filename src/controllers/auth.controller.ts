@@ -1,9 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { ObjectId } from 'mongodb';
 import jwt from 'jsonwebtoken';
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 import { AuthenticatedRequest } from '../middleware/auth';
-import { signToken, verifyToken } from '../utils/jwt';
+import { signToken } from '../utils/jwt';
 
 export const me = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -12,8 +11,7 @@ export const me = async (req: AuthenticatedRequest, res: Response, next: NextFun
       return;
     }
 
-    const usersCollection = getDb().collection('users');
-    const user = await usersCollection.findOne({ _id: new ObjectId(req.user.userId) });
+    const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
 
     if (!user) {
       res.status(404).json({ error: 'User not found' });
@@ -22,7 +20,8 @@ export const me = async (req: AuthenticatedRequest, res: Response, next: NextFun
 
     res.status(200).json({
       user: {
-        id: user._id.toString(),
+        id: user.id,
+        _id: user.id,
         name: user.name,
         email: user.email,
         role: user.role || 'user',
@@ -70,8 +69,7 @@ export const syncSession = async (req: Request, res: Response, next: NextFunctio
       return;
     }
 
-    const usersCollection = getDb().collection('users');
-    const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    const user = await prisma.user.findUnique({ where: { id: userId } });
 
     if (!user) {
       res.status(404).json({ error: 'User not found.' });
@@ -79,7 +77,7 @@ export const syncSession = async (req: Request, res: Response, next: NextFunctio
     }
 
     const backendToken = signToken({
-      userId: user._id.toString(),
+      userId: user.id,
       role: user.role || 'user',
     });
 

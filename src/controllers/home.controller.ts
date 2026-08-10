@@ -1,27 +1,24 @@
 import { Request, Response } from 'express';
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
+import { ItemStatus } from '@prisma/client';
 
 export const getTopContributors = async (req: Request, res: Response): Promise<void> => {
   try {
-    const db = getDb();
-    const users = await db.collection('users')
-      .find({ role: 'artisan' })
-      .limit(6)
-      .toArray();
-      
-    // Fallback if no artisans exist
-    const contributors = users.length > 0 ? users : await db.collection('users').find().limit(6).toArray();
-    
-    const safeContributors = contributors.map(u => ({
-      id: u._id,
+    const users = await prisma.user.findMany({
+      take: 6,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const safeContributors = users.map((u) => ({
+      id: u.id,
+      _id: u.id,
       name: u.name || 'Anonymous Artisan',
       email: u.email,
-      avatar: u.image || `https://api.dicebear.com/7.x/initials/svg?seed=${u.name || 'Craft'}`,
+      avatar: u.avatarUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${u.name || 'Craft'}`,
       role: u.role || 'user',
-      sales: Math.floor(Math.random() * 100) + 10 // Mock sales data for the UI
+      sales: Math.floor(Math.random() * 100) + 10,
     }));
-    
-    // If empty even after fallback, send mock data
+
     if (safeContributors.length === 0) {
       const mockContributors = [
         { id: '1', name: 'Elena Rostova', role: 'Ceramics', avatar: 'https://api.dicebear.com/7.x/initials/svg?seed=Elena', sales: 120 },
@@ -32,7 +29,7 @@ export const getTopContributors = async (req: Request, res: Response): Promise<v
       res.json({ success: true, data: mockContributors });
       return;
     }
-    
+
     res.json({ success: true, data: safeContributors });
   } catch (error) {
     console.error('Error fetching top contributors:', error);
@@ -42,14 +39,19 @@ export const getTopContributors = async (req: Request, res: Response): Promise<v
 
 export const getBlogPreview = async (req: Request, res: Response): Promise<void> => {
   try {
-    const db = getDb();
-    const blogposts = await db.collection('blogposts')
-      .find({ status: 'published' })
-      .sort({ createdAt: -1 })
-      .limit(3)
-      .toArray();
-      
-    const previewData = blogposts.length >= 3 ? blogposts : [
+    const blogposts = await prisma.blogPost.findMany({
+      orderBy: { publishedAt: 'desc' },
+      take: 3,
+    });
+
+    const previewData = blogposts.length >= 3 ? blogposts.map(b => ({
+      id: b.id,
+      slug: b.slug,
+      title: b.title,
+      excerpt: b.content ? b.content.slice(0, 150) + '...' : '',
+      image: b.coverImage,
+      createdAt: b.publishedAt,
+    })) : [
       {
         id: 'ceramic-glazing',
         title: 'The Art of Ceramic Glazing',
@@ -87,21 +89,17 @@ export const subscribeNewsletter = async (req: Request, res: Response): Promise<
       res.status(400).json({ success: false, message: 'Valid email is required' });
       return;
     }
-    
-    const db = getDb();
-    const subscribers = db.collection('newslettersubscribers');
-    
-    const existing = await subscribers.findOne({ email });
+
+    const existing = await prisma.newsletterSubscriber.findUnique({ where: { email } });
     if (existing) {
       res.status(400).json({ success: false, message: 'Email is already subscribed' });
       return;
     }
-    
-    await subscribers.insertOne({
-      email,
-      createdAt: new Date()
+
+    await prisma.newsletterSubscriber.create({
+      data: { email },
     });
-    
+
     res.json({ success: true, message: 'Successfully subscribed to the newsletter!' });
   } catch (error) {
     console.error('Error subscribing to newsletter:', error);
@@ -111,24 +109,21 @@ export const subscribeNewsletter = async (req: Request, res: Response): Promise<
 
 export const getPlatformStatistics = async (req: Request, res: Response): Promise<void> => {
   try {
-    const db = getDb();
-    
-    // Run counts in parallel
     const [totalUsers, totalItems, approvedItems, totalReviews] = await Promise.all([
-      db.collection('users').countDocuments(),
-      db.collection('items').countDocuments(),
-      db.collection('items').countDocuments({ status: 'approved' }),
-      db.collection('reviews').countDocuments()
+      prisma.user.count(),
+      prisma.item.count(),
+      prisma.item.count({ where: { status: ItemStatus.approved } }),
+      prisma.review.count(),
     ]);
-    
+
     res.json({
       success: true,
       data: {
-        totalUsers: totalUsers > 0 ? totalUsers : 2450, // Mock fallback if db is empty
+        totalUsers: totalUsers > 0 ? totalUsers : 2450,
         totalItems: totalItems > 0 ? totalItems : 18400,
         approvedItems: approvedItems > 0 ? approvedItems : 18000,
-        totalReviews: totalReviews > 0 ? totalReviews : 45200
-      }
+        totalReviews: totalReviews > 0 ? totalReviews : 45200,
+      },
     });
   } catch (error) {
     console.error('Error fetching platform statistics:', error);

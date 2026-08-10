@@ -1,15 +1,18 @@
 import { Request, Response } from 'express';
-import { getDb } from '../config/db';
-import { CategoryDocument } from '../types/category';
+import { prisma } from '../config/db';
 
 export const getCategories = async (req: Request, res: Response) => {
   try {
-    const db = getDb();
-    const categories = await db.collection<CategoryDocument>('categories').find().toArray();
+    const categories = await prisma.category.findMany();
     
+    const formattedCategories = categories.map(cat => ({
+      ...cat,
+      _id: cat.id,
+    }));
+
     res.status(200).json({
       success: true,
-      data: categories,
+      data: formattedCategories,
     });
   } catch (error) {
     console.error('Error fetching categories:', error);

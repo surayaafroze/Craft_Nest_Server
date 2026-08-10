@@ -207,11 +207,12 @@ export const updateItemStatus = async (req: AuthenticatedRequest, res: Response,
   }
 };
 
-// Helper function to map the MongoDB document to the response format (removes _id, returns id)
+// Helper function to map the document to the response format
 function mapItemResponse(item: ItemDocument) {
+  const itemId = item.id || item._id || '';
   return {
-    id: item._id.toString(),
-    ownerId: item.ownerId.toString(),
+    id: String(itemId),
+    ownerId: String(item.ownerId),
     owner: item.owner ? {
       name: item.owner.name,
       avatarUrl: item.owner.avatarUrl || null,

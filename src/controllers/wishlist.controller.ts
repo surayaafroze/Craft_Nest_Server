@@ -1,7 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../middleware/auth';
 import { WishlistService } from '../services/wishlist.service';
-import { ObjectId } from 'mongodb';
 
 export const getWishlist = async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -26,7 +25,7 @@ export const addToWishlist = async (req: AuthenticatedRequest, res: Response, ne
 
     const itemId = req.params.itemId as string;
     
-    if (!ObjectId.isValid(itemId)) {
+    if (!itemId) {
       res.status(400).json({ error: 'Invalid item ID format' });
       return;
     }
@@ -57,7 +56,7 @@ export const removeFromWishlist = async (req: AuthenticatedRequest, res: Respons
 
     const itemId = req.params.itemId as string;
     
-    if (!ObjectId.isValid(itemId)) {
+    if (!itemId) {
       res.status(400).json({ error: 'Invalid item ID format' });
       return;
     }

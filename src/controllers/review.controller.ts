@@ -77,7 +77,7 @@ export const createReview = async (req: AuthenticatedRequest, res: Response, nex
       res.status(201).json({
         message: 'Review submitted successfully',
         review: {
-          id: newReview._id.toString(),
+          id: String(newReview.id || newReview._id),
           userId: req.user.userId,
           itemId: id,
           rating,
@@ -120,7 +120,7 @@ export const updateReview = async (req: AuthenticatedRequest, res: Response, nex
       return;
     }
 
-    if (review.userId.toString() !== req.user.userId) {
+    if (String(review.userId) !== req.user.userId) {
       res.status(403).json({ error: 'You can only update your own reviews' });
       return;
     }
@@ -130,9 +130,9 @@ export const updateReview = async (req: AuthenticatedRequest, res: Response, nex
     res.status(200).json({
       message: 'Review updated successfully',
       review: updatedReview ? {
-        id: updatedReview._id.toString(),
-        userId: updatedReview.userId.toString(),
-        itemId: updatedReview.itemId.toString(),
+        id: String(updatedReview.id || updatedReview._id),
+        userId: String(updatedReview.userId),
+        itemId: String(updatedReview.itemId),
         rating: updatedReview.rating,
         comment: updatedReview.comment,
         createdAt: updatedReview.createdAt,
