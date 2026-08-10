@@ -1,59 +1,51 @@
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 import { ContactMessageDocument } from '../types/contact';
-import { ObjectId } from 'mongodb';
+import { ContactStatus } from '@prisma/client';
 
 export class ContactService {
-  public static async submitMessage(data: { name: string; email: string; subject: string; message: string }): Promise<ContactMessageDocument> {
-    const db = getDb();
-    const contactMessagesCollection = db.collection<ContactMessageDocument>('contactmessages');
-
-    const newMessage: Omit<ContactMessageDocument, '_id'> = {
-      ...data,
-      status: 'new',
-      createdAt: new Date(),
+  private static formatMessage(msg: any): ContactMessageDocument {
+    if (!msg) return msg;
+    return {
+      ...msg,
+      _id: msg.id,
     };
+  }
 
-    const result = await contactMessagesCollection.insertOne(newMessage as ContactMessageDocument);
-    return { ...newMessage, _id: result.insertedId } as ContactMessageDocument;
+  public static async submitMessage(data: { name: string; email: string; subject: string; message: string }): Promise<ContactMessageDocument> {
+    const msg = await prisma.contactMessage.create({
+      data: {
+        ...data,
+        status: ContactStatus.new,
+      },
+    });
+    return this.formatMessage(msg);
   }
 
   public static async getAllMessages(): Promise<ContactMessageDocument[]> {
-    const db = getDb();
-    const contactMessagesCollection = db.collection<ContactMessageDocument>('contactmessages');
-
-    return contactMessagesCollection.find().sort({ createdAt: -1 }).toArray();
+    const messages = await prisma.contactMessage.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+    return messages.map(this.formatMessage);
   }
 
   public static async updateStatus(id: string, status: 'new' | 'read' | 'responded'): Promise<ContactMessageDocument | null> {
-    const db = getDb();
-    const contactMessagesCollection = db.collection<ContactMessageDocument>('contactmessages');
-
-    let objId: ObjectId;
     try {
-      objId = new ObjectId(id);
+      const updated = await prisma.contactMessage.update({
+        where: { id },
+        data: { status: status as ContactStatus },
+      });
+      return this.formatMessage(updated);
     } catch {
       return null;
     }
-
-    return contactMessagesCollection.findOneAndUpdate(
-      { _id: objId },
-      { $set: { status } },
-      { returnDocument: 'after' }
-    );
   }
 
   public static async deleteMessage(id: string): Promise<boolean> {
-    const db = getDb();
-    const contactMessagesCollection = db.collection<ContactMessageDocument>('contactmessages');
-
-    let objId: ObjectId;
     try {
-      objId = new ObjectId(id);
+      await prisma.contactMessage.delete({ where: { id } });
+      return true;
     } catch {
       return false;
     }
-
-    const result = await contactMessagesCollection.deleteOne({ _id: objId });
-    return result.deletedCount === 1;
   }
 }

@@ -1,20 +1,15 @@
-import { getDb } from '../config/db';
-import { NewsletterSubscriberDocument } from '../types/newsletter';
-import { MongoServerError } from 'mongodb';
+import { prisma } from '../config/db';
 
 export class NewsletterService {
   public static async subscribe(email: string): Promise<void> {
-    const db = getDb();
-    const subscribersCollection = db.collection<NewsletterSubscriberDocument>('newslettersubscribers');
-
     try {
-      await subscribersCollection.insertOne({
-        email,
-        subscribedAt: new Date(),
-      } as NewsletterSubscriberDocument);
+      await prisma.newsletterSubscriber.create({
+        data: {
+          email,
+        },
+      });
     } catch (error: any) {
-      if (error instanceof MongoServerError && error.code === 11000) {
-        // Already subscribed, we can just throw a handled error or ignore
+      if (error.code === 'P2002') {
         throw new Error('Email is already subscribed');
       }
       throw error;

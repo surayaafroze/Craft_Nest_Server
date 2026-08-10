@@ -1,103 +1,74 @@
-import { ObjectId } from 'mongodb';
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 
 export class AnalyticsService {
   public static async getUserAnalytics(userId: string) {
-    const db = getDb();
-    const itemsCollection = db.collection('items');
-    const reviewsCollection = db.collection('reviews');
-    const userIdObj = new ObjectId(userId);
-
     // 1. Items General Stats (total items & average rating)
-    const itemsStats = await itemsCollection
-      .aggregate([
-        { $match: { ownerId: userIdObj } },
-        {
-          $group: {
-            _id: null,
-            totalItems: { $sum: 1 },
-            avgRating: { $avg: '$avgRating' },
-          },
-        },
-      ])
-      .toArray();
+    const totalItems = await prisma.item.count({ where: { ownerId: userId } });
+    const itemRatingAgg = await prisma.item.aggregate({
+      where: { ownerId: userId },
+      _avg: { avgRating: true },
+    });
 
-    const totalItems = itemsStats[0]?.totalItems || 0;
-    const rawAvgRating = itemsStats[0]?.avgRating || 0;
+    const rawAvgRating = itemRatingAgg._avg.avgRating || 0;
     const avgRating = Math.round(rawAvgRating * 10) / 10;
 
     // 2. Reviews Stats & Rating Distribution (total reviews received & ratings 1-5 counts)
-    const reviewStats = await reviewsCollection
-      .aggregate([
-        {
-          $lookup: {
-            from: 'items',
-            localField: 'itemId',
-            foreignField: '_id',
-            as: 'item',
-          },
-        },
-        { $unwind: '$item' },
-        { $match: { 'item.ownerId': userIdObj } },
-        {
-          $group: {
-            _id: null,
-            totalReviews: { $sum: 1 },
-            rating1: { $sum: { $cond: [{ $eq: ['$rating', 1] }, 1, 0] } },
-            rating2: { $sum: { $cond: [{ $eq: ['$rating', 2] }, 1, 0] } },
-            rating3: { $sum: { $cond: [{ $eq: ['$rating', 3] }, 1, 0] } },
-            rating4: { $sum: { $cond: [{ $eq: ['$rating', 4] }, 1, 0] } },
-            rating5: { $sum: { $cond: [{ $eq: ['$rating', 5] }, 1, 0] } },
-          },
-        },
-      ])
-      .toArray();
+    const reviews = await prisma.review.findMany({
+      where: { item: { ownerId: userId } },
+      select: { rating: true },
+    });
 
-    const totalReviews = reviewStats[0]?.totalReviews || 0;
+    const totalReviews = reviews.length;
+    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    reviews.forEach((r) => {
+      if (r.rating >= 1 && r.rating <= 5) {
+        counts[r.rating as 1 | 2 | 3 | 4 | 5]++;
+      }
+    });
+
     const ratingDistribution = [
-      { rating: '1 Star', count: reviewStats[0]?.rating1 || 0 },
-      { rating: '2 Star', count: reviewStats[0]?.rating2 || 0 },
-      { rating: '3 Star', count: reviewStats[0]?.rating3 || 0 },
-      { rating: '4 Star', count: reviewStats[0]?.rating4 || 0 },
-      { rating: '5 Star', count: reviewStats[0]?.rating5 || 0 },
+      { rating: '1 Star', count: counts[1] },
+      { rating: '2 Star', count: counts[2] },
+      { rating: '3 Star', count: counts[3] },
+      { rating: '4 Star', count: counts[4] },
+      { rating: '5 Star', count: counts[5] },
     ];
 
     // 3. Items grouped by category
-    const categoryStats = await itemsCollection
-      .aggregate([
-        { $match: { ownerId: userIdObj } },
-        {
-          $group: {
-            _id: '$category',
-            count: { $sum: 1 },
-          },
-        },
-        { $project: { name: '$_id', value: '$count', _id: 0 } },
-      ])
-      .toArray();
+    const categoryGroup = await prisma.item.groupBy({
+      by: ['category'],
+      where: { ownerId: userId },
+      _count: { id: true },
+    });
+
+    const categoryDistribution = categoryGroup.map((cg) => ({
+      name: cg.category,
+      value: cg._count.id,
+    }));
 
     // 4. Item activity over time (items created in the last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const activityStats = await itemsCollection
-      .aggregate([
-        {
-          $match: {
-            ownerId: userIdObj,
-            createdAt: { $gte: thirtyDaysAgo },
-          },
-        },
-        {
-          $group: {
-            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-        { $project: { date: '$_id', itemsCreated: '$count', _id: 0 } },
-      ])
-      .toArray();
+    const recentItems = await prisma.item.findMany({
+      where: {
+        ownerId: userId,
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const activityMap = new Map<string, number>();
+    recentItems.forEach((item) => {
+      const dateStr = item.createdAt.toISOString().split('T')[0];
+      activityMap.set(dateStr, (activityMap.get(dateStr) || 0) + 1);
+    });
+
+    const activityOverTime = Array.from(activityMap.entries()).map(([date, itemsCreated]) => ({
+      date,
+      itemsCreated,
+    }));
 
     return {
       stats: {
@@ -106,39 +77,31 @@ export class AnalyticsService {
         totalReviewsReceived: totalReviews,
       },
       charts: {
-        categoryDistribution: categoryStats,
+        categoryDistribution,
         ratingDistribution,
-        activityOverTime: activityStats,
+        activityOverTime,
       },
     };
   }
 
   public static async getPlatformAnalytics() {
-    const db = getDb();
-    const usersCollection = db.collection('users');
-    const itemsCollection = db.collection('items');
-    const reviewsCollection = db.collection('reviews');
-
     // 1. Total counts
-    const totalUsers = await usersCollection.countDocuments();
-    const totalItems = await itemsCollection.countDocuments();
-    const totalReviews = await reviewsCollection.countDocuments();
+    const totalUsers = await prisma.user.count();
+    const totalItems = await prisma.item.count();
+    const totalReviews = await prisma.review.count();
 
     // 2. Total unique categories count
-    const categories = await itemsCollection.distinct('category');
+    const categories = await prisma.item.findMany({
+      select: { category: true },
+      distinct: ['category'],
+    });
     const totalCategories = categories.length;
 
     // 3. Status breakdowns
-    const statusStats = await itemsCollection
-      .aggregate([
-        {
-          $group: {
-            _id: '$status',
-            count: { $sum: 1 },
-          },
-        },
-      ])
-      .toArray();
+    const statusGroup = await prisma.item.groupBy({
+      by: ['status'],
+      _count: { id: true },
+    });
 
     const statusCounts = {
       pending: 0,
@@ -146,78 +109,78 @@ export class AnalyticsService {
       rejected: 0,
     };
 
-    statusStats.forEach((stat) => {
-      if (stat._id === 'pending') statusCounts.pending = stat.count;
-      if (stat._id === 'approved') statusCounts.approved = stat.count;
-      if (stat._id === 'rejected') statusCounts.rejected = stat.count;
+    statusGroup.forEach((sg) => {
+      if (sg.status === 'pending') statusCounts.pending = sg._count.id;
+      if (sg.status === 'approved') statusCounts.approved = sg._count.id;
+      if (sg.status === 'rejected') statusCounts.rejected = sg._count.id;
     });
 
     // 4. User growth over time (users created per month)
-    const userGrowth = await usersCollection
-      .aggregate([
-        {
-          $group: {
-            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-            newUsers: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-        { $project: { month: '$_id', newUsers: 1, _id: 0 } },
-      ])
-      .toArray();
+    const users = await prisma.user.findMany({
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const userGrowthMap = new Map<string, number>();
+    users.forEach((u) => {
+      const monthStr = u.createdAt.toISOString().slice(0, 7);
+      userGrowthMap.set(monthStr, (userGrowthMap.get(monthStr) || 0) + 1);
+    });
+    const userGrowth = Array.from(userGrowthMap.entries()).map(([month, newUsers]) => ({
+      month,
+      newUsers,
+    }));
 
     // 5. New items over time (items created per month)
-    const itemGrowth = await itemsCollection
-      .aggregate([
-        {
-          $group: {
-            _id: { $dateToString: { format: '%Y-%m', date: '$createdAt' } },
-            newItems: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-        { $project: { month: '$_id', newItems: 1, _id: 0 } },
-      ])
-      .toArray();
+    const items = await prisma.item.findMany({
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const itemGrowthMap = new Map<string, number>();
+    items.forEach((i) => {
+      const monthStr = i.createdAt.toISOString().slice(0, 7);
+      itemGrowthMap.set(monthStr, (itemGrowthMap.get(monthStr) || 0) + 1);
+    });
+    const itemGrowth = Array.from(itemGrowthMap.entries()).map(([month, newItems]) => ({
+      month,
+      newItems,
+    }));
 
     // 6. Top contributors (users with most items)
-    const topContributors = await itemsCollection
-      .aggregate([
-        {
-          $group: {
-            _id: '$ownerId',
-            itemCount: { $sum: 1 },
-          },
-        },
-        { $sort: { itemCount: -1 } },
-        { $limit: 5 },
-        {
-          $lookup: {
-            from: 'users',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'user',
-          },
-        },
-        { $unwind: '$user' },
-        { $project: { name: '$user.name', email: '$user.email', itemCount: 1, _id: 0 } },
-      ])
-      .toArray();
+    const topOwners = await prisma.item.groupBy({
+      by: ['ownerId'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 5,
+    });
+
+    const ownerIds = topOwners.map((to) => to.ownerId);
+    const ownerUsers = await prisma.user.findMany({
+      where: { id: { in: ownerIds } },
+      select: { id: true, name: true, email: true },
+    });
+    const userMap = new Map(ownerUsers.map((u) => [u.id, u]));
+
+    const topContributors = topOwners.map((to) => {
+      const u = userMap.get(to.ownerId);
+      return {
+        name: u?.name || 'Unknown',
+        email: u?.email || '',
+        itemCount: to._count.id,
+      };
+    });
 
     // 7. Top categories (categories with most items)
-    const topCategories = await itemsCollection
-      .aggregate([
-        {
-          $group: {
-            _id: '$category',
-            itemCount: { $sum: 1 },
-          },
-        },
-        { $sort: { itemCount: -1 } },
-        { $limit: 5 },
-        { $project: { category: '$_id', itemCount: 1, _id: 0 } },
-      ])
-      .toArray();
+    const topCatGroup = await prisma.item.groupBy({
+      by: ['category'],
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 5,
+    });
+
+    const topCategories = topCatGroup.map((tc) => ({
+      category: tc.category,
+      itemCount: tc._count.id,
+    }));
 
     return {
       stats: {

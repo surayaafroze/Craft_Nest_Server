@@ -1,22 +1,23 @@
-import { getDb } from '../config/db';
+import { prisma } from '../config/db';
 import { BlogPostDocument } from '../types/blog';
-import { MongoServerError } from 'mongodb';
 
 export class BlogService {
-  public static async createBlog(data: { title: string; slug: string; coverImage: string; content: string; tags: string[] }): Promise<BlogPostDocument> {
-    const db = getDb();
-    const blogpostsCollection = db.collection<BlogPostDocument>('blogposts');
-
-    const newPost: Omit<BlogPostDocument, '_id'> = {
-      ...data,
-      publishedAt: new Date(),
+  private static formatPost(post: any): BlogPostDocument {
+    if (!post) return post;
+    return {
+      ...post,
+      _id: post.id,
     };
+  }
 
+  public static async createBlog(data: { title: string; slug: string; coverImage: string; content: string; tags: string[] }): Promise<BlogPostDocument> {
     try {
-      const result = await blogpostsCollection.insertOne(newPost as BlogPostDocument);
-      return { ...newPost, _id: result.insertedId } as BlogPostDocument;
+      const post = await prisma.blogPost.create({
+        data,
+      });
+      return this.formatPost(post);
     } catch (error: any) {
-      if (error instanceof MongoServerError && error.code === 11000) {
+      if (error.code === 'P2002') {
         throw new Error('Slug must be unique');
       }
       throw error;
@@ -24,22 +25,17 @@ export class BlogService {
   }
 
   public static async updateBlog(slug: string, data: Partial<Omit<BlogPostDocument, '_id' | 'publishedAt'>>): Promise<BlogPostDocument | null> {
-    const db = getDb();
-    const blogpostsCollection = db.collection<BlogPostDocument>('blogposts');
-
     try {
-      const result = await blogpostsCollection.findOneAndUpdate(
-        { slug },
-        { $set: data },
-        { returnDocument: 'after' }
-      );
-      
-      if (!result) {
-        return null; // Will just return null if not found
-      }
-      return result;
+      const post = await prisma.blogPost.update({
+        where: { slug },
+        data,
+      });
+      return this.formatPost(post);
     } catch (error: any) {
-      if (error instanceof MongoServerError && error.code === 11000) {
+      if (error.code === 'P2025') {
+        return null;
+      }
+      if (error.code === 'P2002') {
         throw new Error('Slug must be unique');
       }
       throw error;
@@ -47,25 +43,24 @@ export class BlogService {
   }
 
   public static async deleteBlog(slug: string): Promise<boolean> {
-    const db = getDb();
-    const blogpostsCollection = db.collection<BlogPostDocument>('blogposts');
-
-    const result = await blogpostsCollection.deleteOne({ slug });
-    return result.deletedCount === 1;
+    try {
+      await prisma.blogPost.delete({ where: { slug } });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   public static async getBlogList(): Promise<BlogPostDocument[]> {
-    const db = getDb();
-    const blogpostsCollection = db.collection<BlogPostDocument>('blogposts');
-
-    // Return all sorted by newest first
-    return blogpostsCollection.find().sort({ publishedAt: -1 }).toArray();
+    const posts = await prisma.blogPost.findMany({
+      orderBy: { publishedAt: 'desc' },
+    });
+    return posts.map(this.formatPost);
   }
 
   public static async getBlogBySlug(slug: string): Promise<BlogPostDocument | null> {
-    const db = getDb();
-    const blogpostsCollection = db.collection<BlogPostDocument>('blogposts');
-
-    return blogpostsCollection.findOne({ slug });
+    const post = await prisma.blogPost.findUnique({ where: { slug } });
+    if (!post) return null;
+    return this.formatPost(post);
   }
 }
