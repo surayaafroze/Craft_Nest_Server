@@ -38,6 +38,12 @@ export const updateMe = async (req: AuthenticatedRequest, res: Response, next: N
   }
 };
 
+/**
+ * Retrieves paginated list of users for admin management.
+ * @query page - Page number (default: 1)
+ * @query limit - Number of users per page (default: 10)
+ * @returns { users: User[], pagination: { page, limit, total, totalPages } }
+ */
 export const getUsers = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { page = '1', limit = '10' } = req.query;
