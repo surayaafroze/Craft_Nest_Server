@@ -35,12 +35,22 @@ export class UserService {
     return this.formatUser(updatedUser);
   }
 
-  public static async getUsers() {
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: 'desc' },
-    });
+  public static async getUsers(skip?: number, limit?: number) {
+    const where = {};
+    const [users, total] = await Promise.all([
+      prisma.user.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        ...(skip !== undefined ? { skip } : {}),
+        ...(limit !== undefined ? { take: limit } : {}),
+      }),
+      prisma.user.count({ where }),
+    ]);
 
-    return users.map(user => this.formatUser(user));
+    return {
+      users: users.map(user => this.formatUser(user)),
+      total
+    };
   }
 
   public static async updateUserStatus(userId: string, status: string) {

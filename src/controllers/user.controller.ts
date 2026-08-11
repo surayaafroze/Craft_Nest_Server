@@ -40,8 +40,23 @@ export const updateMe = async (req: AuthenticatedRequest, res: Response, next: N
 
 export const getUsers = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const users = await UserService.getUsers();
-    res.status(200).json({ users });
+    const { page = '1', limit = '10' } = req.query;
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    const { users, total } = await UserService.getUsers(skip, limitNum);
+    const totalPages = Math.ceil(total / limitNum);
+
+    res.status(200).json({ 
+      users,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages
+      }
+    });
   } catch (error) {
     next(error);
   }
