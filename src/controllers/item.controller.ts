@@ -2,9 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import { ItemService } from '../services/item.service';
 import { ItemDocument } from '../types/item';
 import { AuthenticatedRequest } from '../middleware/auth';
+import { paginationQuerySchema } from '../validators/pagination.validator';
 
 export const getItems = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
+    const { page: parsedPage, limit: parsedLimit } = paginationQuerySchema.parse(req.query);
     const { 
       search, 
       category, 
@@ -13,14 +15,10 @@ export const getItems = async (req: AuthenticatedRequest, res: Response, next: N
       status, 
       sortBy, 
       sortOrder, 
-      page = '1', 
-      limit = '12' 
     } = req.query;
 
-    console.log("getItems called with query:", req.query);
-
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const pageNum = parsedPage;
+    const limitNum = parsedLimit;
     const skip = (pageNum - 1) * limitNum;
 
     const isAdmin = req.user?.role === 'admin';
