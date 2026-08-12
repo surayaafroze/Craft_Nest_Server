@@ -19,20 +19,18 @@ export const requireAuth = async (
   try {
     let token: string | null = null;
 
-    // 1. Try reading from cookie directly (since we have cookie-parser)
-    if (req.cookies && req.cookies.backend_jwt) {
+    // 1. Prioritize Authorization Header (sent directly by frontend API client)
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    }
+
+    // 2. Second preference: backend_jwt Cookie
+    if (!token && req.cookies && req.cookies.backend_jwt) {
       token = req.cookies.backend_jwt;
     }
 
-    // 2. Try reading from Authorization Header (useful for API testing e.g. Postman)
-    if (!token) {
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.split(' ')[1];
-      }
-    }
-
-    // 3. Fallback regex manual cookie parsing just in case cookie-parser missed it
+    // 3. Fallback regex manual cookie parsing
     if (!token && req.headers.cookie) {
       const match = req.headers.cookie.match(/(?:^|;)\s*backend_jwt\s*=\s*([^;]+)/);
       if (match) {
@@ -40,39 +38,51 @@ export const requireAuth = async (
       }
     }
 
-    if (!token) {
-      const baToken = req.cookies && (req.cookies['better-auth.session_data'] || req.cookies['__Secure-better-auth.session_data']);
-      if (baToken) {
-        try {
-          const JWT_SECRET = process.env.JWT_SECRET || '';
-          const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
-          const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
-          if (userId) {
-            const user = await prisma.user.findUnique({ where: { id: userId } });
-            if (user) {
-              req.user = {
-                userId: user.id,
-                role: (user.role as Role) || 'user',
-              };
-              return next();
-            }
-          }
-        } catch (e) {
-          // Fall back to the 401 error below
+    if (token) {
+      try {
+        const decoded = verifyToken(token);
+        req.user = {
+          userId: decoded.userId,
+          role: decoded.role,
+        };
+        return next();
+      } catch (tokenErr) {
+        // If the primary token failed verification (e.g. expired cookie), try Bearer header if cookie was used
+        if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+          const headerToken = req.headers.authorization.split(' ')[1];
+          try {
+            const decoded = verifyToken(headerToken);
+            req.user = {
+              userId: decoded.userId,
+              role: decoded.role,
+            };
+            return next();
+          } catch (e) {}
         }
       }
-      res.status(401).json({ error: 'Access denied. No backend JWT token provided.' });
-      return;
     }
 
-    const decoded = verifyToken(token);
-    
-    req.user = {
-      userId: decoded.userId,
-      role: decoded.role,
-    };
+    // 4. Fallback: Check better-auth session cookie if present
+    const baToken = req.cookies && (req.cookies['better-auth.session_data'] || req.cookies['__Secure-better-auth.session_data']);
+    if (baToken) {
+      try {
+        const JWT_SECRET = process.env.JWT_SECRET || '';
+        const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
+        const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
+        if (userId) {
+          const user = await prisma.user.findUnique({ where: { id: userId } });
+          if (user) {
+            req.user = {
+              userId: user.id,
+              role: (user.role as Role) || 'user',
+            };
+            return next();
+          }
+        }
+      } catch (e) {}
+    }
 
-    next();
+    res.status(401).json({ error: 'Access denied. Invalid, expired, or missing JWT token.' });
   } catch (error) {
     res.status(401).json({ error: 'Invalid or expired token.' });
   }
@@ -86,14 +96,12 @@ export const optionalAuth = async (
   try {
     let token: string | null = null;
 
-    if (req.cookies && req.cookies.backend_jwt) {
-      token = req.cookies.backend_jwt;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
     }
-    if (!token) {
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.split(' ')[1];
-      }
+    if (!token && req.cookies && req.cookies.backend_jwt) {
+      token = req.cookies.backend_jwt;
     }
     if (!token && req.headers.cookie) {
       const match = req.headers.cookie.match(/(?:^|;)\s*backend_jwt\s*=\s*([^;]+)/);
@@ -103,26 +111,30 @@ export const optionalAuth = async (
     }
 
     if (token) {
-      const decoded = verifyToken(token);
-      req.user = {
-        userId: decoded.userId,
-        role: decoded.role,
-      };
+      try {
+        const decoded = verifyToken(token);
+        req.user = {
+          userId: decoded.userId,
+          role: decoded.role,
+        };
+      } catch (e) {}
     } else {
       const baToken = req.cookies && (req.cookies['better-auth.session_data'] || req.cookies['__Secure-better-auth.session_data']);
       if (baToken) {
-        const JWT_SECRET = process.env.JWT_SECRET || '';
-        const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
-        const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
-        if (userId) {
-          const user = await prisma.user.findUnique({ where: { id: userId } });
-          if (user) {
-            req.user = {
-              userId: user.id,
-              role: (user.role as Role) || 'user',
-            };
+        try {
+          const JWT_SECRET = process.env.JWT_SECRET || '';
+          const decodedBA: any = jwt.verify(baToken, JWT_SECRET);
+          const userId = decodedBA?.user?.id || decodedBA?.session?.userId;
+          if (userId) {
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (user) {
+              req.user = {
+                userId: user.id,
+                role: (user.role as Role) || 'user',
+              };
+            }
           }
-        }
+        } catch (e) {}
       }
     }
   } catch (error) {

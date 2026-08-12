@@ -185,7 +185,7 @@ export const syncSession = async (req: Request, res: Response, next: NextFunctio
     const sessionToken = req.cookies['better-auth.session_data'] || req.cookies['__Secure-better-auth.session_data'];
     
     if (!sessionToken) {
-      res.status(400).json({ error: 'No Better Auth session data token found.' });
+      res.status(200).json({ message: 'No session token to sync.' });
       return;
     }
 
