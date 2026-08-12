@@ -54,33 +54,42 @@ export class ReviewService {
     }));
   }
 
-  public static async getMyReviews(userId: string): Promise<any[]> {
-    const reviews = await prisma.review.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        item: {
-          select: {
-            id: true,
-            title: true,
-            images: true,
+  public static async getMyReviews(userId: string, skip?: number, limit?: number): Promise<{ reviews: any[]; total: number }> {
+    const where = { userId };
+    const [reviews, total] = await Promise.all([
+      prisma.review.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        ...(skip !== undefined ? { skip } : {}),
+        ...(limit !== undefined ? { take: limit } : {}),
+        include: {
+          item: {
+            select: {
+              id: true,
+              title: true,
+              images: true,
+            },
           },
         },
-      },
-    });
+      }),
+      prisma.review.count({ where }),
+    ]);
 
-    return reviews.map((r) => ({
-      _id: r.id,
-      id: r.id,
-      rating: r.rating,
-      comment: r.comment,
-      createdAt: r.createdAt,
-      item: {
-        id: r.item.id,
-        title: r.item.title,
-        images: r.item.images,
-      },
-    }));
+    return {
+      reviews: reviews.map((r) => ({
+        _id: r.id,
+        id: r.id,
+        rating: r.rating,
+        comment: r.comment,
+        createdAt: r.createdAt,
+        item: {
+          id: r.item.id,
+          title: r.item.title,
+          images: r.item.images,
+        },
+      })),
+      total,
+    };
   }
 
   public static async createReview(
