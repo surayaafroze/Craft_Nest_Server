@@ -9,8 +9,24 @@ export const getWishlist = async (req: AuthenticatedRequest, res: Response, next
       return;
     }
 
-    const wishlist = await WishlistService.getWishlist(req.user.userId);
-    res.status(200).json({ wishlist });
+    const { page = '1', limit = '10' } = req.query;
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
+    const wishlistData = await WishlistService.getWishlist(req.user.userId, skip, limitNum);
+    const total = wishlistData.total || wishlistData.items.length;
+    const totalPages = Math.max(1, Math.ceil(total / limitNum));
+
+    res.status(200).json({ 
+      wishlist: wishlistData,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages
+      }
+    });
   } catch (error) {
     next(error);
   }

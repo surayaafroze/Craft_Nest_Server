@@ -2,7 +2,7 @@ import { prisma } from '../config/db';
 import { ItemStatus } from '@prisma/client';
 
 export class WishlistService {
-  public static async getWishlist(userId: string): Promise<any> {
+  public static async getWishlist(userId: string, skip?: number, limit?: number): Promise<any> {
     const wishlist = await prisma.wishlist.findUnique({
       where: { userId },
       include: {
@@ -28,18 +28,25 @@ export class WishlistService {
       return {
         userId,
         items: [],
+        total: 0,
       };
     }
+
+    const allItems = wishlist.items.map((wi) => ({
+      ...wi.item,
+      id: wi.item.id,
+      _id: wi.item.id,
+    }));
+
+    const total = allItems.length;
+    const items = limit !== undefined && skip !== undefined ? allItems.slice(skip, skip + limit) : allItems;
 
     return {
       id: wishlist.id,
       _id: wishlist.id,
       userId: wishlist.userId,
-      items: wishlist.items.map((wi) => ({
-        ...wi.item,
-        id: wi.item.id,
-        _id: wi.item.id,
-      })),
+      items,
+      total,
     };
   }
 
