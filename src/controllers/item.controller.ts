@@ -212,6 +212,7 @@ function mapItemResponse(item: ItemDocument) {
   const itemId = item.id || item._id || '';
   return {
     id: String(itemId),
+    _id: String(itemId),
     ownerId: String(item.ownerId),
     owner: item.owner ? {
       name: item.owner.name,
@@ -232,3 +233,4 @@ function mapItemResponse(item: ItemDocument) {
     updatedAt: item.updatedAt,
   };
 }
+
