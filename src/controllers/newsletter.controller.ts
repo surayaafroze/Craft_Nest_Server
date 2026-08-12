@@ -1,6 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import { NewsletterService } from '../services/newsletter.service';
 
+/**
+ * Handles newsletter subscription requests.
+ * @body email - Subscriber email address
+ */
 export const subscribe = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { email } = req.body;
