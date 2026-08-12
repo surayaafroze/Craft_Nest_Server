@@ -28,6 +28,14 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Request logger middleware
+app.use((req: Request, _res: Response, next) => {
+  if (req.path !== '/favicon.ico' && process.env.NODE_ENV !== 'test') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  }
+  next();
+});
+
 // Ignore favicon requests immediately
 app.get('/favicon.ico', (req: Request, res: Response) => {
   res.status(204).end();
