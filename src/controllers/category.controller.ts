@@ -3,7 +3,9 @@ import { prisma } from '../config/db';
 
 export const getCategories = async (req: Request, res: Response) => {
   try {
-    const categories = await prisma.category.findMany();
+    const categories = await prisma.category.findMany({
+      orderBy: { name: 'asc' },
+    });
     
     const formattedCategories = categories.map(cat => ({
       ...cat,
