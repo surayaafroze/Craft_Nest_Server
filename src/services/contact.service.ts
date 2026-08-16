@@ -28,7 +28,7 @@ export class ContactService {
     return messages.map(this.formatMessage);
   }
 
-  public static async updateStatus(id: string, status: 'new' | 'read' | 'responded'): Promise<ContactMessageDocument | null> {
+  public static async updateStatus(id: string, status: ContactStatus | 'new' | 'read' | 'responded'): Promise<ContactMessageDocument | null> {
     try {
       const updated = await prisma.contactMessage.update({
         where: { id },
