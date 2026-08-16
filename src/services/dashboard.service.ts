@@ -13,8 +13,8 @@ export class DashboardService {
       _avg: { avgRating: true },
     });
 
-    const rawAvg = avgRatingAgg._avg.avgRating || 0;
-    const averageRating = Math.round(rawAvg * 10) / 10;
+    const rawAvg = avgRatingAgg._avg.avgRating ?? 0;
+    const averageRating = (isNaN(rawAvg) || rawAvg < 0) ? 0 : Math.round(rawAvg * 10) / 10;
 
     const totalReviews = await prisma.review.count({
       where: { item: { ownerId: userId } },
