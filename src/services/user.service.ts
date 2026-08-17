@@ -54,11 +54,12 @@ export class UserService {
   }
 
   public static async updateUserStatus(userId: string, status: string) {
+    const cleanStatus = status ? status.trim().toLowerCase() : '';
     let updateDoc: any = {};
-    if (status === 'admin') {
+    if (cleanStatus === 'admin') {
       updateDoc = { role: UserRole.admin };
     } else {
-      updateDoc = { status: status as UserStatus, role: UserRole.user };
+      updateDoc = { status: cleanStatus as UserStatus, role: UserRole.user };
     }
 
     const updatedUser = await prisma.user.update({
