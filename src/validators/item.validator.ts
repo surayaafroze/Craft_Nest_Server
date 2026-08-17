@@ -16,3 +16,7 @@ export const updateItemSchema = createItemSchema.partial();
 export const updateStatusSchema = z.object({
   status: z.enum(['approved', 'rejected', 'pending'], { message: 'Status is required and must be approved, rejected, or pending' }),
 });
+
+export const searchQuerySchema = z.object({
+  q: z.string().max(100, { message: 'Search query must be 100 characters or less' }).optional(),
+});
