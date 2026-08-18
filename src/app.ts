@@ -16,6 +16,8 @@ import contactRoutes from './routes/contact.routes';
 import categoryRoutes from './routes/category.routes';
 import { connectDb } from './config/db';
 
+import { requestLogger } from './middleware/requestLogger';
+
 dotenv.config();
 
 const app: Application = express();
@@ -27,14 +29,7 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(cookieParser());
-
-// Request logger middleware
-app.use((req: Request, _res: Response, next) => {
-  if (req.path !== '/favicon.ico' && process.env.NODE_ENV !== 'test') {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  }
-  next();
-});
+app.use(requestLogger);
 
 // Ignore favicon requests immediately
 app.get('/favicon.ico', (req: Request, res: Response) => {
