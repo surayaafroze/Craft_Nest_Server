@@ -3,22 +3,24 @@ import { ItemStatus } from '@prisma/client';
 
 export class DashboardService {
   public static async getDashboardOverview(userId: string) {
-    const totalItems = await prisma.item.count({ where: { ownerId: userId } });
-    const approvedItems = await prisma.item.count({ where: { ownerId: userId, status: ItemStatus.approved } });
-    const pendingItems = await prisma.item.count({ where: { ownerId: userId, status: ItemStatus.pending } });
-    const rejectedItems = await prisma.item.count({ where: { ownerId: userId, status: ItemStatus.rejected } });
-
-    const avgRatingAgg = await prisma.item.aggregate({
-      where: { ownerId: userId },
-      _avg: { avgRating: true },
-    });
+    const [
+      totalItems,
+      approvedItems,
+      pendingItems,
+      rejectedItems,
+      avgRatingAgg,
+      totalReviews
+    ] = await Promise.all([
+      prisma.item.count({ where: { ownerId: userId } }),
+      prisma.item.count({ where: { ownerId: userId, status: ItemStatus.approved } }),
+      prisma.item.count({ where: { ownerId: userId, status: ItemStatus.pending } }),
+      prisma.item.count({ where: { ownerId: userId, status: ItemStatus.rejected } }),
+      prisma.item.aggregate({ where: { ownerId: userId }, _avg: { avgRating: true } }),
+      prisma.review.count({ where: { item: { ownerId: userId } } })
+    ]);
 
     const rawAvg = avgRatingAgg._avg.avgRating ?? 0;
     const averageRating = (isNaN(rawAvg) || rawAvg < 0) ? 0 : Math.round(rawAvg * 10) / 10;
-
-    const totalReviews = await prisma.review.count({
-      where: { item: { ownerId: userId } },
-    });
 
     return {
       totalItems,
