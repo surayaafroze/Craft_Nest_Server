@@ -77,13 +77,9 @@ app.get('/', (req: Request, res: Response) => {
   res.json({ success: true, message: 'CraftNest API is running' });
 });
 
+import { errorHandler } from './middleware/errorHandler';
+
 // Global Error Handler
-app.use((err: any, req: Request, res: Response, next: any) => {
-  console.error('Unhandled Server Error:', err);
-  res.status(500).json({
-    success: false,
-    message: err?.message || 'Internal Server Error'
-  });
-});
+app.use(errorHandler);
 
 export default app;
