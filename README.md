@@ -69,9 +69,11 @@ CraftNest Server is a high-performance Express.js backend designed to support th
 Create a `.env` file in the root of the server project. **Never expose actual secret values!**
 
 ```env
+PORT=5000
+DATABASE_URL=
 MONGODB_URI=
 JWT_SECRET=
-
+CLIENT_URL=http://localhost:3000
 ```
 
 ## 🛠️ Installation
